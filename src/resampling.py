@@ -20,18 +20,16 @@ from rasterio.enums import Resampling
 logger = logging.getLogger(__name__)
 
 
-def resample_to_target_grid(source: xr.DataArray, target: xr.DataArray, 
-                           resolution: float, method: str = "bilinear") -> xr.DataArray:
+def resample_to_target_grid(source: xr.DataArray, target: xr.DataArray, method: str = "bilinear") -> xr.DataArray:
     """Resample a source grid to match a target grid.
     
     Args:
         source: DataArray to resample
         target: DataArray with the target grid
-        resolution: Target resolution in meters
         method: Resampling method (nearest, bilinear, cubic)
         
     Returns:
-        Resampled DataArray
+        Resampled DataArray with exact same x and y coordinates as target grid
     """
     # Check if source has rio accessor
     if not hasattr(source, "rio"):
@@ -41,11 +39,6 @@ def resample_to_target_grid(source: xr.DataArray, target: xr.DataArray,
     # Get target bounds and CRS
     target_bounds = target.rio.bounds()
     target_crs = target.rio.crs
-    
-    # Check if source CRS matches target CRS
-    if source.rio.crs != target_crs:
-        logger.info(f"Reprojecting from {source.rio.crs} to {target_crs}")
-        source = source.rio.reproject(target_crs)
     
     # Map resampling method string to rasterio enum
     resampling_methods = {
@@ -64,18 +57,20 @@ def resample_to_target_grid(source: xr.DataArray, target: xr.DataArray,
     
     resampling_enum = resampling_methods[method]
     
-    # Calculate target dimensions
-    minx, miny, maxx, maxy = target_bounds
-    width = int((maxx - minx) / resolution)
-    height = int((maxy - miny) / resolution)
-    
-    # Resample to target grid
+    # Resample to target grid using the exact dimensions of the target
     resampled = source.rio.reproject(
         target_crs,
-        shape=(height, width),
+        shape=(len(target.y), len(target.x)),  # Use target dimensions directly
         bounds=target_bounds,
         resampling=resampling_enum
     )
+    
+    # Ensure exact coordinate alignment by assigning target coordinates
+    # This is the key change to ensure exact coordinate matching
+    resampled = resampled.assign_coords({
+        "x": target.x.values,
+        "y": target.y.values
+    })
     
     # Preserve attributes
     resampled.attrs.update(source.attrs)
@@ -150,7 +145,7 @@ def align_grids(grids: Dict[str, xr.DataArray], target_resolution: float,
         else:
             # Resample to match the reference grid
             aligned_grids[name] = resample_to_target_grid(
-                grid, reference_grid, target_resolution, method
+                grid, reference_grid, method
             )
     
     return aligned_grids
