@@ -96,6 +96,9 @@ def load_temperature_data(config: Dict[str, Any]) -> xr.Dataset:
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
 
+    if not config['processing'].get('use_dask', True):
+        ds = ds.compute()
+
     # Drop time coordinates where all values are NaN
     # ds = ds.dropna(dim="time", how="all", subset=[temp_var])
     
@@ -138,6 +141,9 @@ def load_precipitation_data(config: Dict[str, Any]) -> xr.Dataset:
         start_date = config["temporal"]["start_date"]
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
+
+    if not config['processing'].get('use_dask', True):
+        ds = ds.compute()
 
     # Drop time coordinates where all values are NaN
     # ds = ds.dropna(dim="time", how="all", subset=[precip_var])
@@ -275,6 +281,9 @@ def save_water_balance(water_balance: xr.DataArray, config: Dict[str, Any],
         export_kwargs["compress"] = output_config["compression"]
     
     # Save to file
+    if 'lon' in water_balance.dims or 'lat' in water_balance.dims:
+        water_balance = water_balance.rename({"lon": "x", "lat": "y"})
+
     water_balance.rio.to_raster(output_path, **export_kwargs)
     
     logger.info(f"Saved water balance to {output_path}")
