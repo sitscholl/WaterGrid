@@ -30,6 +30,7 @@ from src.data_io import (
 )
 from src.resampling import resample_to_target_grid
 from src.utils import get_season
+from src.config import DATETIME_FREQUENCY_MAPPING
 
 logger = logging.getLogger(__name__)
 
@@ -117,13 +118,14 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
     
     # Step 1: Calculate monthly mean temperature if input is daily
     temperature_freq = xr.infer_freq(temperature.time)
-    if temperature_freq == 'H':
+    if temperature_freq in DATETIME_FREQUENCY_MAPPING['hourly']:
         temp_daily = temperature.resample(time="1D").mean()
         temp_monthly = temp_daily.resample(time="1ME").mean()
-    elif temperature_freq == 'D':
-        # If we have daily data, aggregate to monthly
+
+    elif temperature_freq in DATETIME_FREQUENCY_MAPPING['daily']:
         temp_monthly = temperature.resample(time="1ME").mean()
-    elif temperature_freq == 'ME' or temperature_freq == 'MS':
+
+    elif temperature_freq in DATETIME_FREQUENCY_MAPPING['monthly']:
         temp_monthly = temperature
     else:
         raise ValueError(f"Unknown temporal frequency in temperature array. Got {temperature_freq}")
@@ -369,10 +371,36 @@ def calculate_p_minus_et(precipitation: xr.DataArray, et: xr.DataArray) -> xr.Da
     Returns:
         DataArray containing water balance (mm)
     """
-    # Ensure precipitation and ET have the same dimensions and coordinates
-    if precipitation.dims != et.dims:
+    # Ensure precipitation and ET have the same dimensions
+    if set(precipitation.dims) != set(et.dims):
         raise ValueError("Precipitation and ET must have the same dimensions")
     
+    # Check if both arrays have a time dimension
+    if 'time' in precipitation.dims and 'time' in et.dims:
+        # Infer the frequency of both time series
+        precip_freq = xr.infer_freq(precipitation.time)
+        et_freq = xr.infer_freq(et.time)
+        
+        logger.debug(f"Precipitation time frequency: {precip_freq}, ET time frequency: {et_freq}")
+        
+        # If frequencies don't match, resample precipitation to match ET
+        if precip_freq != et_freq:
+            logger.info(f"Resampling precipitation from {precip_freq} to {et_freq} frequency")
+            
+            # Determine the target frequency (use ET's frequency)
+            if et_freq in DATETIME_FREQUENCY_MAPPING['daily']:
+                # Resample to daily
+                precipitation = precipitation.resample(time="1D").sum()
+            elif et_freq in DATETIME_FREQUENCY_MAPPING['monthly']:
+                # Resample to monthly
+                precipitation = precipitation.resample(time="1ME").sum()
+            elif et_freq in DATETIME_FREQUENCY_MAPPING['yearly']:
+                # Resample to yearly
+                precipitation = precipitation.resample(time="1YE").sum()
+            else:
+                # For other frequencies, use the exact frequency string
+                precipitation = precipitation.resample(time=et_freq).sum()
+                
     # Calculate water balance
     water_balance = precipitation - et
     
@@ -428,15 +456,21 @@ def save_results(water_balance: xr.DataArray, frequency: str,
         # Resample to the requested frequency
         if frequency == "daily":
             # No resampling needed for daily output if input is daily
-            if water_balance.time.dt.day.size > 1:
+            if xr.infer_freq(water_balance.time) in DATETIME_FREQUENCY_MAPPING['daily']:
                 wb_resampled = water_balance
             else:
                 # If input is not daily, cannot produce daily output
                 logger.warning("Cannot produce daily output from non-daily input")
                 return output_paths
+
         elif frequency == "monthly":
-            # Resample to monthly
-            wb_resampled = water_balance.resample(time="1M").sum()
+            if xr.infer_freq(water_balance.time) in DATETIME_FREQUENCY_MAPPING['monthly']:
+                wb_resampled = water_balance
+            else:
+                # Resample to monthly
+                wb_resampled = water_balance.resample(time="1M").sum()    
+
+        ##TODO: Check seasonal aggregation here            
         elif frequency == "seasonal":
             # Get season definitions from config
             season_months = config["seasons"]
@@ -473,9 +507,14 @@ def save_results(water_balance: xr.DataArray, frequency: str,
                 },
                 attrs=wb_resampled.attrs
             )
+            
         elif frequency == "annual":
-            # Resample to annual
-            wb_resampled = water_balance.resample(time="1Y").sum()
+            if xr.infer_freq(water_balance.time) in DATETIME_FREQUENCY_MAPPING['annual']:
+                wb_resampled = water_balance
+            else:
+                # Resample to annual
+                wb_resampled = water_balance.resample(time="1Y").sum()
+
         else:
             raise ValueError(f"Unsupported output frequency: {frequency}")
         
