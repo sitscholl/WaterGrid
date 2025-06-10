@@ -85,16 +85,19 @@ def load_temperature_data(config: Dict[str, Any]) -> xr.Dataset:
     # Load with dask for chunked processing
     ds = xr.open_zarr(temp_path, chunks=config["processing"]["chunk_size"], decode_coords = 'all')
     
-    # Extract the temperature variable
+    # Check for the temperature variable
     temp_var = temp_config["variable"]
     if temp_var not in ds:
         raise ValueError(f"Temperature variable '{temp_var}' not found in dataset")
-    
+   
     # Filter by date range if specified
     if "temporal" in config and "start_date" in config["temporal"] and "end_date" in config["temporal"]:
         start_date = config["temporal"]["start_date"]
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
+
+    # Drop time coordinates where all values are NaN
+    # ds = ds.dropna(dim="time", how="all", subset=[temp_var])
     
     logger.info(f"Loaded temperature data from {temp_path}")
     logger.debug(f"Temperature data shape: {ds[temp_var].shape}")
@@ -125,16 +128,19 @@ def load_precipitation_data(config: Dict[str, Any]) -> xr.Dataset:
     # Load with dask for chunked processing
     ds = xr.open_zarr(precip_path, chunks=config["processing"]["chunk_size"], decode_coords='all')
     
-    # Extract the precipitation variable
+    # Check for the precipitation variable
     precip_var = precip_config["variable"]
     if precip_var not in ds:
         raise ValueError(f"Precipitation variable '{precip_var}' not found in dataset")
-    
+   
     # Filter by date range if specified
     if "temporal" in config and "start_date" in config["temporal"] and "end_date" in config["temporal"]:
         start_date = config["temporal"]["start_date"]
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
+
+    # Drop time coordinates where all values are NaN
+    # ds = ds.dropna(dim="time", how="all", subset=[precip_var])
     
     logger.info(f"Loaded precipitation data from {precip_path}")
     logger.debug(f"Precipitation data shape: {ds[precip_var].shape}")
@@ -165,6 +171,12 @@ def load_landuse_data(config: Dict[str, Any]) -> rioxarray.raster_array.RasterAr
     
     # Load with rioxarray
     landuse = rioxarray.open_rasterio(landuse_path).squeeze(drop = True)
+
+    if "x" in landuse.coords:
+        landuse = landuse.rename({"x": "lon"})
+    if "y" in landuse.coords:
+        landuse = landuse.rename({"y": "lat"})
+    landuse = landuse.rio.set_spatial_dims(x_dim = 'lon', y_dim = 'lat')
     
     # Check CRS
     expected_crs = landuse_config.get("crs", "EPSG:32632")
@@ -215,7 +227,7 @@ def load_kc_coefficients(config: Dict[str, Any]) -> pd.DataFrame:
     kc_df = pd.read_excel(kc_path, sheet_name=sheet_name)
     
     # Validate DataFrame structure
-    required_columns = ["landuse_code", "landuse_name", "winter", "spring", "summer", "autumn"]
+    required_columns = ["landuse_code", *list(config['seasons'].keys())]
     missing_columns = [col for col in required_columns if col not in kc_df.columns]
     
     if missing_columns:
