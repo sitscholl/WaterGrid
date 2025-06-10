@@ -509,7 +509,7 @@ def save_results(water_balance: xr.DataArray, frequency: str,
                 start_date = end_date = time_dt.strftime("%Y-%m-%d")
             elif frequency == "monthly":
                 start_date = time_dt.strftime("%Y-%m-01")
-                end_date = (time_dt + pd.offsets.MonthEnd(1)).strftime("%Y-%m-%d")
+                end_date = time_dt.strftime("%Y-%m-%d")
             elif frequency == "seasonal":
                 # Use season name
                 season = get_season(time_dt, season_months)
