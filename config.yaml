@@ -3,19 +3,19 @@
 # Input data paths
 input:
   temperature:
-    path: "data/temperature.zarr"
+    path: "data/crespi.zarr"
     variable: "temperature"  # Variable name in zarr dataset
     units: "celsius"  # Expected units
   precipitation:
-    path: "data/precipitation.zarr"
+    path: "data/crespi.zarr"
     variable: "precipitation"  # Variable name in zarr dataset
     units: "mm"  # Expected units
   landuse:
-    path: "data/landuse.tif"
+    path: "data/landuse_250m.tif"
     crs: "EPSG:32632"
   kc_coefficients:
     path: "data/kc_values.xlsx"
-    sheet_name: "Sheet1"
+    sheet_name: "marsoner"
 
 # Output configuration
 output:
@@ -38,16 +38,16 @@ spatial:
 
 # Temporal parameters
 temporal:
-  start_date: "2020-01-01"
-  end_date: "2020-12-31"
+  start_date: "1989-01-01"
+  end_date: "1989-12-31"
   output_frequency: "monthly"  # Options: daily, monthly, seasonal, annual
 
 # Processing options
 processing:
   chunk_size:
-    time: 30  # Number of time steps per chunk
-    x: 1000  # Pixels in x direction per chunk
-    y: 1000  # Pixels in y direction per chunk
+    time: -1  # Number of time steps per chunk
+    lon: 100  # Pixels in x direction per chunk
+    lat: 100  # Pixels in y direction per chunk
   parallel_workers: 4  # Number of parallel workers for dask
   memory_limit: "4GB"  # Memory limit for dask
   cache_intermediates: true  # Cache intermediate results
@@ -57,6 +57,7 @@ calculation:
   thornthwaite:
     # Latitude correction method
     latitude_correction: false #implement this
+    daily_downscaling: false
   water_balance:
     # Soil parameters for water balance calculation
     include_soil_moisture: false  # If true, include soil moisture in calculation
@@ -64,7 +65,7 @@ calculation:
 
 # Seasonal Kc coefficient periods (for mapping seasonal values)
 seasons:
-  winter: ["12", "01", "02"]  # December, January, February
-  spring: ["03", "04", "05"]  # March, April, May
-  summer: ["06", "07", "08"]  # June, July, August
-  autumn: ["09", "10", "11"]  # September, October, November
+  Kini: ["03", "04", "05"]
+  Kmid: ["06", "07", "08"]
+  Kend: ["09", "10"]
+  Kcold: ["01", "02", "11", "12"]
