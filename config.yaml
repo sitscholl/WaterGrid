@@ -23,7 +23,7 @@ output:
   filename_pattern: "water_balance_{frequency}_{start_date}_{end_date}.tif"
   format: "GTiff"
   compression: "LZW"
-  create_report: true  # Generate metadata and statistics report
+  create_report: false  # Generate metadata and statistics report
 
 # Spatial parameters
 spatial:
@@ -55,8 +55,6 @@ processing:
 # Calculation parameters
 calculation:
   thornthwaite:
-    # Heat index calculation period (typically annual)
-    heat_index_period: "annual"
     # Latitude correction method
     latitude_correction: false #implement this
   water_balance:

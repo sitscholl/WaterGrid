@@ -137,16 +137,7 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
         0
     )
     
-    ## TODO: Rework this and use fixed annual value for heat index?
-    if heat_index_period == "annual":
-        # Calculate annual heat index by summing over 12 months
-        heat_index = monthly_heat_index.rolling(time=12, center=False).sum()
-        # Fill NaN values at the beginning with the first valid value
-        heat_index = heat_index.bfill(dim="time")
-    else:
-        # Use a fixed heat index for all months
-        heat_index = monthly_heat_index.sum(dim="time")
-        heat_index = heat_index.expand_dims(dim={"time": temp_monthly.time})
+    heat_index = monthly_heat_index.groupby('time.year').sum()
     
     # Step 3: Calculate unadjusted PET
     # PET (mm/month) = 16 * (10 * T / I)^a
@@ -163,9 +154,9 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
     # Calculate unadjusted PET
     unadjusted_pet = xr.where(
         temp_monthly > 0,
-        16 * (10 * temp_monthly / heat_index) ** a,
+        (16 * (10 * (temp_monthly.groupby('time.year') / heat_index))).groupby('time.year') ** a,
         0
-    )
+    ).drop('year')
     
     # Step 4: Apply latitude correction if requested
     ##TODO: Reimplement this correctly
