@@ -1,0 +1,72 @@
+# Climatic Water Balance Calculator Configuration
+
+# Input data paths
+input:
+  temperature:
+    path: "data/temperature.zarr"
+    variable: "temperature"  # Variable name in zarr dataset
+    units: "celsius"  # Expected units
+  precipitation:
+    path: "data/precipitation.zarr"
+    variable: "precipitation"  # Variable name in zarr dataset
+    units: "mm"  # Expected units
+  landuse:
+    path: "data/landuse.tif"
+    crs: "EPSG:32632"
+  kc_coefficients:
+    path: "data/kc_values.xlsx"
+    sheet_name: "Sheet1"
+
+# Output configuration
+output:
+  directory: "results"
+  filename_pattern: "water_balance_{frequency}_{start_date}_{end_date}.tif"
+  format: "GTiff"
+  compression: "LZW"
+  create_report: true  # Generate metadata and statistics report
+
+# Spatial parameters
+spatial:
+  target_resolution: 250  # Output resolution in meters
+  resampling_method: "bilinear"  # Method for resampling (nearest, bilinear, cubic)
+  bounds:  # Optional bounds to limit calculation area (minx, miny, maxx, maxy)
+    # If not specified, use the intersection of all input datasets
+    # minx: 500000
+    # miny: 4500000
+    # maxx: 550000
+    # maxy: 4550000
+
+# Temporal parameters
+temporal:
+  start_date: "2020-01-01"
+  end_date: "2020-12-31"
+  output_frequency: "monthly"  # Options: daily, monthly, seasonal, annual
+
+# Processing options
+processing:
+  chunk_size:
+    time: 30  # Number of time steps per chunk
+    x: 1000  # Pixels in x direction per chunk
+    y: 1000  # Pixels in y direction per chunk
+  parallel_workers: 4  # Number of parallel workers for dask
+  memory_limit: "4GB"  # Memory limit for dask
+  cache_intermediates: true  # Cache intermediate results
+
+# Calculation parameters
+calculation:
+  thornthwaite:
+    # Heat index calculation period (typically annual)
+    heat_index_period: "annual"
+    # Latitude correction method
+    latitude_correction: false #implement this
+  water_balance:
+    # Soil parameters for water balance calculation
+    include_soil_moisture: false  # If true, include soil moisture in calculation
+    # soil_moisture_capacity: 100  # mm, only used if include_soil_moisture is true
+
+# Seasonal Kc coefficient periods (for mapping seasonal values)
+seasons:
+  winter: ["12", "01", "02"]  # December, January, February
+  spring: ["03", "04", "05"]  # March, April, May
+  summer: ["06", "07", "08"]  # June, July, August
+  autumn: ["09", "10", "11"]  # September, October, November
