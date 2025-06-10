@@ -108,25 +108,25 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
     """
     # Extract calculation parameters
     thornthwaite_config = config["calculation"]["thornthwaite"]
-    heat_index_period = thornthwaite_config.get("heat_index_period", "annual")
-    apply_lat_correction = thornthwaite_config.get("latitude_correction", True)
+    apply_lat_correction = thornthwaite_config.get("latitude_correction", False)
+    downscale_to_daily = thornthwaite_config.get("daily_downscaling", False)
     
     # Ensure temperature is in Celsius
     if config["input"]["temperature"]["units"].lower() != "celsius":
         raise ValueError("Temperature must be in Celsius for Thornthwaite method")
     
     # Step 1: Calculate monthly mean temperature if input is daily
-    if "time" in temperature.dims and temperature.time.dt.hour.size > 0:
-        # If we have sub-daily data, first aggregate to daily
+    temperature_freq = xr.infer_freq(temperature.time)
+    if temperature_freq == 'H':
         temp_daily = temperature.resample(time="1D").mean()
-        # Then aggregate to monthly
         temp_monthly = temp_daily.resample(time="1ME").mean()
-    elif "time" in temperature.dims and temperature.time.dt.day.size > 1:
+    elif temperature_freq == 'D':
         # If we have daily data, aggregate to monthly
         temp_monthly = temperature.resample(time="1ME").mean()
-    else:
-        # Assume data is already monthly
+    elif temperature_freq == 'ME' or temperature_freq == 'MS':
         temp_monthly = temperature
+    else:
+        raise ValueError(f"Unknown temporal frequency in temperature array. Got {temperature_freq}")
     
     # Step 2: Calculate heat index (I)
     # I is the sum of 12 monthly index values i, where i = (T/5)^1.514
@@ -161,6 +161,7 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
     # Step 4: Apply latitude correction if requested
     ##TODO: Reimplement this correctly
     if apply_lat_correction:
+        raise NotImplementedError("Latitude correction is not yet implemented.")
         # Get latitude from the spatial coordinates
         # This assumes temperature data has y coordinate in latitude
         if "latitude" in temperature.coords:
@@ -197,11 +198,10 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
         pet = unadjusted_pet
     
     # Convert monthly PET to daily if input was daily
-    ##TODO: Remove this and keep monthly frequency??
-    if "time" in temperature.dims and temperature.time.dt.day.size > 1:
+    ##TODO: Fix this or keep monthly frequency
+    if downscale_to_daily:
+        raise NotImplementedError("Daily downscaling is not yet implemented.")
         # Distribute monthly PET evenly across days in each month
-        # This is a simplification; a more sophisticated approach might
-        # consider daily temperature variations
         
         # Create a daily PET dataset with the same time index as the original temperature
         pet_daily = xr.full_like(temperature, np.nan)
@@ -297,19 +297,15 @@ def adjust_pet_with_kc(pet: xr.DataArray, landuse: xr.DataArray,
     Returns:
         DataArray containing adjusted evapotranspiration (mm)
     """
-    # Create a mapping of land-use codes to seasonal Kc values
-    landuse_codes = kc_df["landuse_code"].values
-    seasons = ["winter", "spring", "summer", "autumn"]
+    # Get season definitions from config
+    season_months = config["seasons"]
     
     # Create a dictionary mapping landuse codes to seasonal Kc values
     kc_mapping = {}
     for _, row in kc_df.iterrows():
         landuse_code = row["landuse_code"]
-        kc_mapping[landuse_code] = {season: row[season] for season in seasons}
-    
-    # Get season definitions from config
-    season_months = config["seasons"]
-    
+        kc_mapping[landuse_code] = {season: row[season] for season in list(season_months.keys())}
+        
     # Create a time-varying Kc grid based on landuse and season
     # This is a computationally intensive step, so we'll use dask for parallelization
     
@@ -326,11 +322,6 @@ def adjust_pet_with_kc(pet: xr.DataArray, landuse: xr.DataArray,
         
         # Create a season DataArray
         season_data = np.array([month_to_season[m] for m in months])
-        season_da = xr.DataArray(
-            season_data,
-            dims=["time"],
-            coords={"time": pet.time}
-        )
         
         # Create a Kc grid for each time step
         # This is a memory-intensive operation, so we'll process in chunks
