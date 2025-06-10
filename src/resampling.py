@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def resample_to_target_grid(source: xr.DataArray, target: xr.DataArray, method: str = "bilinear") -> xr.DataArray:
-    """Resample a source grid to match a target grid.
+    """Resample a source grid to match a target grid while preserving chunking.
     
     Args:
         source: DataArray to resample
@@ -37,43 +37,36 @@ def resample_to_target_grid(source: xr.DataArray, target: xr.DataArray, method: 
         source = rioxarray.open_rasterio(source)
     
     # Get target bounds and CRS
-    target_bounds = target.rio.bounds()
     target_crs = target.rio.crs
-    
-    # Map resampling method string to rasterio enum
-    resampling_methods = {
+      
+    # Map interp methods
+    resampling_methods_rasterio = {        
         "nearest": Resampling.nearest,
         "bilinear": Resampling.bilinear,
         "cubic": Resampling.cubic,
-        "average": Resampling.average,
-        "max": Resampling.max,
-        "min": Resampling.min,
-        "mode": Resampling.mode
     }
-    
+
+    resampling_methods = {
+        "nearest": "nearest",
+        "bilinear": "linear",
+        "cubic": "cubic",
+    }    
+
     if method not in resampling_methods:
         raise ValueError(f"Unsupported resampling method: {method}. "
                        f"Supported methods: {list(resampling_methods.keys())}")
     
-    resampling_enum = resampling_methods[method]
-    
-    # Resample to target grid using the exact dimensions of the target
-    resampled = source.rio.reproject(
-        target_crs,
-        shape=(len(target.y), len(target.x)),  # Use target dimensions directly
-        bounds=target_bounds,
-        resampling=resampling_enum
-    )
-    
-    # Ensure exact coordinate alignment by assigning target coordinates
-    # This is the key change to ensure exact coordinate matching
-    resampled = resampled.assign_coords({
-        "x": target.x.values,
-        "y": target.y.values
-    })
-    
-    # Preserve attributes
-    resampled.attrs.update(source.attrs)
+    # First ensure the source is in the same CRS as the target
+    if source.rio.crs != target_crs:
+        # This step still loads into memory, but we need it for CRS transformation
+        logger.warning(f"Source CRS ({source.rio.crs}) does not match target CRS ({target_crs}). Reprojecting source to match target CRS (requires array to be loaded into memory).")
+        source = source.rio.reproject(
+            target_crs,
+            resampling=resampling_methods_rasterio[method]
+        )
+                
+    # Use xarray's interp which preserves chunking
+    resampled = source.interp_like(target, method = resampling_methods[method])
     
     return resampled
 
@@ -113,8 +106,25 @@ def align_grids(grids: Dict[str, xr.DataArray], target_resolution: float,
     
     # If target resolution is higher than the highest resolution grid,
     # we need to upsample the reference grid first
-    if target_resolution < smallest_cell_size:
-        logger.warning(f"Target resolution {target_resolution}m is higher than "
+        # Ensure chunking is preserved or re-applied if it was lost
+    if hasattr(source, "chunks") and source.chunks is not None:
+        # Try to preserve original chunking pattern along non-spatial dimensions
+        chunks = {}
+        for dim in resampled.dims:
+            if dim in ["lat", "lon"]:
+                # For spatial dimensions, we might need different chunking
+                # based on the new dimensions
+                continue
+            elif dim in source.dims and source.chunks is not None:
+                # Find the chunk size for this dimension in the source
+                dim_index = source.dims.index(dim)
+                if dim_index < len(source.chunks):
+                    chunks[dim] = source.chunks[dim_index]
+        
+        # Apply chunking if we have any dimensions to chunk
+        if chunks:
+            resampled = resampled.chunk(chunks)
+            logger.warning(f"Target resolution {target_resolution}m is higher than "
                      f"the highest resolution grid ({smallest_cell_size}m). "
                      f"This may lead to artificial precision.")
         
