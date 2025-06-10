@@ -65,10 +65,10 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     
     # Resample temperature and precipitation to target grid
     temperature = resample_to_target_grid(
-        temperature, landuse, target_resolution, resampling_method
+        temperature, landuse, resampling_method
     )
     precipitation = resample_to_target_grid(
-        precipitation, landuse, target_resolution, resampling_method
+        precipitation, landuse, resampling_method
     )
     
     # Calculate potential evapotranspiration using Thornthwaite method

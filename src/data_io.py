@@ -158,19 +158,31 @@ def load_landuse_data(config: Dict[str, Any]) -> rioxarray.raster_array.RasterAr
     """
     landuse_config = config["input"]["landuse"]
     landuse_path = landuse_config["path"]
+    target_res = config['spatial']['target_resolution']
     
     if not os.path.exists(landuse_path):
         raise FileNotFoundError(f"Land-use data not found: {landuse_path}")
     
     # Load with rioxarray
-    landuse = rioxarray.open_rasterio(landuse_path)
+    landuse = rioxarray.open_rasterio(landuse_path).squeeze(drop = True)
     
     # Check CRS
     expected_crs = landuse_config.get("crs", "EPSG:32632")
-    if landuse.rio.crs.to_string() != expected_crs:
-        logger.warning(f"Land-use CRS {landuse.rio.crs} does not match expected CRS {expected_crs}")
-        logger.info(f"Reprojecting land-use data to {expected_crs}")
-        landuse = landuse.rio.reproject(expected_crs)
+    if (landuse.rio.crs.to_string() != expected_crs) or (landuse.rio.resolution()[0] != target_res):
+        logger.info(f"Reprojecting land-use data to {expected_crs} and resolution {target_res} using Resampling.nearest")
+        
+        target_bounds = landuse.rio.bounds()
+        minx, miny, maxx, maxy = target_bounds
+        width = int((maxx - minx) / target_res)
+        height = int((maxy - miny) / target_res)
+        
+        # Resample to target grid
+        landuse = landuse.rio.reproject(
+            expected_crs,
+            shape=(height, width),
+            bounds=target_bounds,
+            resampling=Resampling.nearest
+        )
     
     logger.info(f"Loaded land-use data from {landuse_path}")
     logger.debug(f"Land-use data shape: {landuse.shape}")
