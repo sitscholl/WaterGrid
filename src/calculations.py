@@ -83,6 +83,10 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     # Calculate water balance (P - ET)
     logger.info("Calculating water balance")
     water_balance = calculate_p_minus_et(precipitation, et)
+
+    # Compute chunks
+    logger.info('Computing chunks...')
+    water_balance = water_balance.compute()
     
     # Aggregate results based on output frequency
     output_frequency = config["temporal"].get("output_frequency", "monthly")
@@ -507,7 +511,7 @@ def save_results(water_balance: xr.DataArray, frequency: str,
                 },
                 attrs=wb_resampled.attrs
             )
-            
+
         elif frequency == "annual":
             if xr.infer_freq(water_balance.time) in DATETIME_FREQUENCY_MAPPING['annual']:
                 wb_resampled = water_balance
