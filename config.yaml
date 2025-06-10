@@ -30,11 +30,10 @@ spatial:
   target_resolution: 250  # Output resolution in meters
   resampling_method: "bilinear"  # Method for resampling (nearest, bilinear, cubic)
   bounds:  # Optional bounds to limit calculation area (minx, miny, maxx, maxy)
-    # If not specified, use the intersection of all input datasets
-    # minx: 500000
-    # miny: 4500000
-    # maxx: 550000
-    # maxy: 4550000
+    minx: 631928
+    miny: 5161673
+    maxx: 646735
+    maxy: 5169860
 
 # Temporal parameters
 temporal:
@@ -44,10 +43,11 @@ temporal:
 
 # Processing options
 processing:
+  use_dask: false
   chunk_size:
     time: -1  # Number of time steps per chunk
-    lon: 100  # Pixels in x direction per chunk
-    lat: 100  # Pixels in y direction per chunk
+    lon: 70  # Pixels in x direction per chunk
+    lat: 70  # Pixels in y direction per chunk
   parallel_workers: 4  # Number of parallel workers for dask
   memory_limit: "4GB"  # Memory limit for dask
   cache_intermediates: true  # Cache intermediate results

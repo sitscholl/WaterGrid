@@ -96,6 +96,11 @@ def load_temperature_data(config: Dict[str, Any]) -> xr.Dataset:
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
 
+    bounds = config['spatial'].get('bounds')
+    if bounds is not None:
+        minx, miny, maxx, maxy = tuple(bounds.values())
+        ds = ds.sel(lon = slice(minx, maxx), lat = slice(miny, maxy))
+
     if not config['processing'].get('use_dask', True):
         ds = ds.compute()
 
@@ -141,6 +146,11 @@ def load_precipitation_data(config: Dict[str, Any]) -> xr.Dataset:
         start_date = config["temporal"]["start_date"]
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
+
+    bounds = config['spatial'].get('bounds')
+    if bounds is not None:
+        minx, miny, maxx, maxy = tuple(bounds.values())
+        ds = ds.sel(lon = slice(minx, maxx), lat = slice(miny, maxy))
 
     if not config['processing'].get('use_dask', True):
         ds = ds.compute()
@@ -201,6 +211,12 @@ def load_landuse_data(config: Dict[str, Any]) -> rioxarray.raster_array.RasterAr
             bounds=target_bounds,
             resampling=Resampling.nearest
         )
+
+    bounds = config['spatial'].get('bounds')
+    if bounds is not None:
+        minx, miny, maxx, maxy = tuple(bounds.values())
+        ##TODO: Determine right order of miny and maxy automatically
+        landuse = landuse.sel(lon = slice(minx, maxx), lat = slice(maxy, miny))
     
     logger.info(f"Loaded land-use data from {landuse_path}")
     logger.debug(f"Land-use data shape: {landuse.shape}")
