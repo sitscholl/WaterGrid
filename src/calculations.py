@@ -57,8 +57,8 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     logger.info(f"Resampling data to target resolution of {target_resolution}m")
     
     # Resample temperature and precipitation to target grid
-    temperature.resample_to_target_grid(landuse.data, resampling_method)
-    precipitation.resample_to_target_grid(landuse.data, resampling_method)
+    temperature.resample_match(landuse.data, resampling_method)
+    precipitation.resample_match(landuse.data, resampling_method)
     
     # Calculate potential evapotranspiration using Thornthwaite method
     logger.info("Calculating potential evapotranspiration using Thornthwaite method")

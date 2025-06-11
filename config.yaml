@@ -49,7 +49,7 @@ processing:
 calculation:
   temperature:
     temperature_correction: true
-    radiation_files: "data/rad_corr.nc"
+    radiation_files: "C:/Users/tscho/Desktop/rad_corr.nc"
   precipitation:
     precipitation_correction: true
   thornthwaite:

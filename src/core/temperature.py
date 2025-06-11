@@ -1,9 +1,13 @@
 import xarray as xr
 import numpy as np
 
+import logging
+
 from .base import BaseProcessor
 from ..data_io import load_climate_data, apply_spatial_filter
 from ..resampling import resample_to_target_grid
+
+logger = logging.getLogger(__name__)
 
 class Temperature(BaseProcessor):
 
@@ -41,14 +45,16 @@ class Temperature(BaseProcessor):
             )
 
         rad_corr = rad_corr.chunk(self.config["processing"]["chunk_size"])
-        
+
         return rad_corr
 
     def correct(self):
         if self.config['calculation'].get('temperature', {}).get('temperature_correction', False):
+            logger.info('Correcting temperature data')
+
             radiation_data = self._load_radiation()
             tas_corr = ((np.abs(self.data) * 0.93).groupby('time.month') * radiation_data) + self.data
 
-            self.data = tas_corr
+            self.data = tas_corr.compute()
             self.corrected = True
 
