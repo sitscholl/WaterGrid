@@ -41,6 +41,7 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     # Load input data
     temperature = Temperature(config)
     temperature.load()
+    temperature.correct()
 
     precipitation = Precipitation(config)
     precipitation.load()
