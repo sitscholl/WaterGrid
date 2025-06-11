@@ -4,3 +4,10 @@ DATETIME_FREQUENCY_MAPPING = {
     'yearly': ['Y', '1Y', 'YE', '1YE'],
     'hourly': ['H', '1H']
 }
+
+BOUNDING_BOXES = {
+    'WestKlein': (631928, 5161673, 646735, 5169860),
+    'WestGross': (617281, 5153227, 659291, 5179677),
+    'OstKlein': (707870, 5183048, 717119, 5191692),
+    'OstGross': (696805, 5173799, 735703, 5208721)
+}

@@ -23,6 +23,8 @@ import xarray as xr
 import yaml
 from rasterio.enums import Resampling
 
+from .config import BOUNDING_BOXES
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,9 +98,11 @@ def load_temperature_data(config: Dict[str, Any]) -> xr.Dataset:
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
 
-    bounds = config['spatial'].get('bounds')
-    if bounds is not None:
-        minx, miny, maxx, maxy = tuple(bounds.values())
+    region_name = config['spatial'].get('region')
+    if region_name is not None:
+        if region_name not in BOUNDING_BOXES.keys():
+            raise KeyError(f"Region '{region_name}' not found in BOUNDING_BOXES. Use one of {list(BOUNDING_BOXES.keys())}")
+        minx, miny, maxx, maxy = BOUNDING_BOXES[region_name]
         ds = ds.sel(lon = slice(minx, maxx), lat = slice(miny, maxy))
 
     if not config['processing'].get('use_dask', True):
@@ -147,9 +151,11 @@ def load_precipitation_data(config: Dict[str, Any]) -> xr.Dataset:
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
 
-    bounds = config['spatial'].get('bounds')
-    if bounds is not None:
-        minx, miny, maxx, maxy = tuple(bounds.values())
+    region_name = config['spatial'].get('region')
+    if region_name is not None:
+        if region_name not in BOUNDING_BOXES.keys():
+            raise KeyError(f"Region '{region_name}' not found in BOUNDING_BOXES. Use one of {list(BOUNDING_BOXES.keys())}")
+        minx, miny, maxx, maxy = BOUNDING_BOXES[region_name]
         ds = ds.sel(lon = slice(minx, maxx), lat = slice(miny, maxy))
 
     if not config['processing'].get('use_dask', True):
