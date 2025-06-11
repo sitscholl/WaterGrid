@@ -66,6 +66,105 @@ def setup_output_directory(output_dir: str) -> Path:
     return output_path
 
 
+def apply_spatial_filter(data: Union[xr.Dataset, xr.DataArray, rioxarray.raster_array.RasterArray], 
+                     config: Dict[str, Any]) -> Union[xr.Dataset, xr.DataArray, rioxarray.raster_array.RasterArray]:
+    """Apply spatial filtering to a dataset or data array based on region configuration.
+    
+    Args:
+        data: Dataset or DataArray to filter
+        config: Configuration dictionary
+        
+    Returns:
+        Filtered dataset or data array
+        
+    Raises:
+        KeyError: If the specified region is not found in BOUNDING_BOXES
+    """
+    region_name = config['spatial'].get('region')
+    if region_name is None:
+        return data
+        
+    if region_name not in BOUNDING_BOXES.keys():
+        raise KeyError(f"Region '{region_name}' not found in BOUNDING_BOXES. Use one of {list(BOUNDING_BOXES.keys())}")
+    
+    minx, miny, maxx, maxy = BOUNDING_BOXES[region_name]
+    
+    # Determine if latitude is in ascending or descending order
+    if 'lat' in data.coords:
+        lat_values = data.lat.values
+        if len(lat_values) > 1:
+            lat_ascending = lat_values[0] < lat_values[-1]
+            
+            # Select appropriate slice order based on latitude direction
+            if lat_ascending:
+                # For ascending latitude (min to max), use slice(miny, maxy)
+                data = data.sel(lon=slice(minx, maxx), lat=slice(miny, maxy))
+            else:
+                # For descending latitude (max to min), use slice(maxy, miny)
+                data = data.sel(lon=slice(minx, maxx), lat=slice(maxy, miny))
+        else:
+            # If there's only one latitude value, just use regular slice
+            data = data.sel(lon=slice(minx, maxx), lat=slice(miny, maxy))
+    
+    logger.debug(f"Applied spatial filter for region '{region_name}'")
+    return data
+
+
+def load_climate_data(config: Dict[str, Any], data_type: str) -> xr.Dataset:
+    """Load climate data (temperature or precipitation) from zarr dataset.
+    
+    Args:
+        config: Configuration dictionary
+        data_type: Type of climate data to load ('temperature' or 'precipitation')
+        
+    Returns:
+        xarray Dataset containing climate data
+        
+    Raises:
+        FileNotFoundError: If the climate data file does not exist
+        ValueError: If the data_type is not supported or variable not found in dataset
+    """
+    if data_type not in ["temperature", "precipitation"]:
+        raise ValueError(f"Unsupported data type: {data_type}. Use 'temperature' or 'precipitation'")
+    
+    data_config = config["input"][data_type]
+    data_path = data_config["path"]
+    
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"{data_type.capitalize()} data not found: {data_path}")
+    
+    # Load with dask for chunked processing
+    ds = xr.open_zarr(data_path, chunks=config["processing"]["chunk_size"], decode_coords='all')
+    
+    # Check for the variable
+    var_name = data_config["variable"]
+    if var_name not in ds:
+        raise ValueError(f"{data_type.capitalize()} variable '{var_name}' not found in dataset")
+   
+    # Filter by date range if specified
+    if "temporal" in config and "start_date" in config["temporal"] and "end_date" in config["temporal"]:
+        start_date = config["temporal"]["start_date"]
+        end_date = config["temporal"]["end_date"]
+        ds = ds.sel(time=slice(start_date, end_date))
+
+    # Apply spatial filtering
+    ds = apply_spatial_filter(ds, config)
+
+    # Compute if not using dask
+    if not config['processing'].get('use_dask', True):
+        ds = ds.compute()
+
+    # Drop time coordinates where all values are NaN
+    # ds = ds.dropna(dim="time", how="all", subset=[var_name])
+    
+    logger.info(f"Loaded {data_type} data from {data_path}")
+    logger.debug(f"{data_type.capitalize()} data shape: {ds[var_name].shape}")
+    logger.debug(f"{data_type.capitalize()} data crs: {ds[var_name].rio.crs}")
+    logger.debug(f"{data_type.capitalize()} data resolution: {ds[var_name].rio.resolution()}")
+    
+    return ds
+
+
 def load_temperature_data(config: Dict[str, Any]) -> xr.Dataset:
     """Load temperature data from zarr dataset.
     
@@ -78,45 +177,7 @@ def load_temperature_data(config: Dict[str, Any]) -> xr.Dataset:
     Raises:
         FileNotFoundError: If the temperature data file does not exist
     """
-    temp_config = config["input"]["temperature"]
-    temp_path = temp_config["path"]
-    
-    if not os.path.exists(temp_path):
-        raise FileNotFoundError(f"Temperature data not found: {temp_path}")
-    
-    # Load with dask for chunked processing
-    ds = xr.open_zarr(temp_path, chunks=config["processing"]["chunk_size"], decode_coords = 'all')
-    
-    # Check for the temperature variable
-    temp_var = temp_config["variable"]
-    if temp_var not in ds:
-        raise ValueError(f"Temperature variable '{temp_var}' not found in dataset")
-   
-    # Filter by date range if specified
-    if "temporal" in config and "start_date" in config["temporal"] and "end_date" in config["temporal"]:
-        start_date = config["temporal"]["start_date"]
-        end_date = config["temporal"]["end_date"]
-        ds = ds.sel(time=slice(start_date, end_date))
-
-    region_name = config['spatial'].get('region')
-    if region_name is not None:
-        if region_name not in BOUNDING_BOXES.keys():
-            raise KeyError(f"Region '{region_name}' not found in BOUNDING_BOXES. Use one of {list(BOUNDING_BOXES.keys())}")
-        minx, miny, maxx, maxy = BOUNDING_BOXES[region_name]
-        ds = ds.sel(lon = slice(minx, maxx), lat = slice(miny, maxy))
-
-    if not config['processing'].get('use_dask', True):
-        ds = ds.compute()
-
-    # Drop time coordinates where all values are NaN
-    # ds = ds.dropna(dim="time", how="all", subset=[temp_var])
-    
-    logger.info(f"Loaded temperature data from {temp_path}")
-    logger.debug(f"Temperature data shape: {ds[temp_var].shape}")
-    logger.debug(f"Temperature data crs: {ds[temp_var].rio.crs}")
-    logger.debug(f"Temperature data resolution: {ds[temp_var].rio.resolution()}")
-    
-    return ds
+    return load_climate_data(config, "temperature")
 
 
 def load_precipitation_data(config: Dict[str, Any]) -> xr.Dataset:
@@ -131,45 +192,7 @@ def load_precipitation_data(config: Dict[str, Any]) -> xr.Dataset:
     Raises:
         FileNotFoundError: If the precipitation data file does not exist
     """
-    precip_config = config["input"]["precipitation"]
-    precip_path = precip_config["path"]
-    
-    if not os.path.exists(precip_path):
-        raise FileNotFoundError(f"Precipitation data not found: {precip_path}")
-    
-    # Load with dask for chunked processing
-    ds = xr.open_zarr(precip_path, chunks=config["processing"]["chunk_size"], decode_coords='all')
-    
-    # Check for the precipitation variable
-    precip_var = precip_config["variable"]
-    if precip_var not in ds:
-        raise ValueError(f"Precipitation variable '{precip_var}' not found in dataset")
-   
-    # Filter by date range if specified
-    if "temporal" in config and "start_date" in config["temporal"] and "end_date" in config["temporal"]:
-        start_date = config["temporal"]["start_date"]
-        end_date = config["temporal"]["end_date"]
-        ds = ds.sel(time=slice(start_date, end_date))
-
-    region_name = config['spatial'].get('region')
-    if region_name is not None:
-        if region_name not in BOUNDING_BOXES.keys():
-            raise KeyError(f"Region '{region_name}' not found in BOUNDING_BOXES. Use one of {list(BOUNDING_BOXES.keys())}")
-        minx, miny, maxx, maxy = BOUNDING_BOXES[region_name]
-        ds = ds.sel(lon = slice(minx, maxx), lat = slice(miny, maxy))
-
-    if not config['processing'].get('use_dask', True):
-        ds = ds.compute()
-
-    # Drop time coordinates where all values are NaN
-    # ds = ds.dropna(dim="time", how="all", subset=[precip_var])
-    
-    logger.info(f"Loaded precipitation data from {precip_path}")
-    logger.debug(f"Precipitation data shape: {ds[precip_var].shape}")
-    logger.debug(f"Precipitation data crs: {ds[precip_var].rio.crs}")
-    logger.debug(f"Precipitation data resolution: {ds[precip_var].rio.resolution()}")
-    
-    return ds
+    return load_climate_data(config, "precipitation")
 
 
 def load_landuse_data(config: Dict[str, Any]) -> rioxarray.raster_array.RasterArray:
@@ -218,12 +241,8 @@ def load_landuse_data(config: Dict[str, Any]) -> rioxarray.raster_array.RasterAr
             resampling=Resampling.nearest
         )
 
-    region_name = config['spatial'].get('region')
-    if region_name is not None:
-        if region_name not in BOUNDING_BOXES.keys():
-            raise KeyError(f"Region '{region_name}' not found in BOUNDING_BOXES. Use one of {list(BOUNDING_BOXES.keys())}")
-        minx, miny, maxx, maxy = BOUNDING_BOXES[region_name]
-        landuse = landuse.sel(lon = slice(minx, maxx), lat = slice(maxy, miny))
+    # Apply spatial filtering
+    landuse = apply_spatial_filter(landuse, config)
     
     logger.info(f"Loaded land-use data from {landuse_path}")
     logger.debug(f"Land-use data shape: {landuse.shape}")
