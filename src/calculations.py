@@ -70,7 +70,7 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     
     # Calculate water balance (P - ET)
     logger.info("Calculating water balance")
-    water_balance = calculate_p_minus_et(precipitation, et)
+    water_balance = calculate_p_minus_et(precipitation.data, et)
 
     # Compute chunks
     logger.info('Computing chunks...')
