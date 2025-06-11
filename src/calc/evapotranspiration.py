@@ -6,6 +6,7 @@ from typing import Dict, Any
 
 from ..config import DATETIME_FREQUENCY_MAPPING
 from .day_length import day_lengths, get_lat_in_4326
+from ..utils import get_season
 
 def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]) -> xr.DataArray:
     """Calculate potential evapotranspiration using the Thornthwaite method.
@@ -126,8 +127,9 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
     return pet
 
 
-def adjust_pet_with_kc(pet: xr.DataArray, landuse: xr.DataArray, 
-                      kc_df: pd.DataFrame, config: Dict[str, Any]) -> xr.DataArray:
+def adjust_pet_with_kc(pet: xr.DataArray, 
+                       kc_grid: xr.DataArray, 
+                       config: Dict[str, Any]) -> xr.DataArray:
     """Adjust potential evapotranspiration using land-use specific crop coefficients.
     
     Args:
@@ -139,63 +141,20 @@ def adjust_pet_with_kc(pet: xr.DataArray, landuse: xr.DataArray,
     Returns:
         DataArray containing adjusted evapotranspiration (mm)
     """
-    # Get season definitions from config
+
+    ##Assign seasons to pet
     season_months = config["seasons"]
-    
-    # Create a dictionary mapping landuse codes to seasonal Kc values
-    kc_mapping = {}
-    for _, row in kc_df.iterrows():
-        landuse_code = row["landuse_code"]
-        kc_mapping[landuse_code] = {season: row[season] for season in list(season_months.keys())}
+    time_coords = [pd.to_datetime(i) for i in pet['time'].values]
+    seasons = [get_season(i, season_months) for i in time_coords]
+
+   # Apply the appropriate seasonal Kc value to each timestep
+    et = xr.zeros_like(pet)
+    for i, (time_val, season) in enumerate(zip(pet.time.values, seasons)):
+        # Select the correct seasonal Kc grid
+        seasonal_kc = kc_grid.sel(season=season)
         
-    # Create a time-varying Kc grid based on landuse and season
-    # This is a computationally intensive step, so we'll use dask for parallelization
-    
-    # First, create a season DataArray with the same time dimension as pet
-    if "time" in pet.dims:
-        # Extract month information from pet time coordinate
-        months = pet.time.dt.month.values
-        
-        # Map each month to its season
-        month_to_season = {}
-        for season, month_list in season_months.items():
-            for month in month_list:
-                month_to_season[int(month)] = season
-        
-        # Create a season DataArray
-        season_data = np.array([month_to_season[m] for m in months])
-        
-        # Create a Kc grid for each time step
-        # This is a memory-intensive operation, so we'll process in chunks
-        
-        # Initialize the adjusted ET DataArray with the same shape as pet
-        et = xr.zeros_like(pet)
-        
-        # Process each time step
-        for i, (time_val, season) in enumerate(zip(pet.time.values, season_data)):
-            # Create a Kc grid for this time step based on landuse and season
-            kc_grid = xr.zeros_like(landuse)
-            
-            # Assign Kc values based on landuse codes
-            for landuse_code, kc_values in kc_mapping.items():
-                kc_value = kc_values[season]
-                kc_grid = xr.where(landuse == landuse_code, kc_value, kc_grid)
-            
-            # Apply Kc to PET for this time step
-            et_time_slice = pet.isel(time=i) * kc_grid
-            
-            # Assign to the adjusted ET DataArray
-            et = et.where(et.time != time_val, et_time_slice)
-    else:
-        # If pet has no time dimension, use annual average Kc values
-        kc_grid = xr.zeros_like(landuse)
-        
-        # Calculate annual average Kc for each landuse type
-        for landuse_code, kc_values in kc_mapping.items():
-            annual_kc = sum(kc_values.values()) / len(kc_values)
-            kc_grid = xr.where(landuse == landuse_code, annual_kc, kc_grid)
-        
-        # Apply Kc to PET
-        et = pet * kc_grid
+        # Apply to the corresponding time slice of pet
+        time_slice = pet.sel(time=time_val)
+        et[i, :, :] = time_slice * seasonal_kc
     
     return et

@@ -47,7 +47,6 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
 
     landuse = Landuse(config)
     landuse.load()
-    landuse.correct()
         
     # Resample data to target grid if needed
     target_resolution = config["spatial"].get("target_resolution", 5)  # Default to 5m
@@ -62,11 +61,12 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     
     # Calculate potential evapotranspiration using Thornthwaite method
     logger.info("Calculating potential evapotranspiration using Thornthwaite method")
-    pet = calculate_thornthwaite_pet(temperature, config)
+    pet = calculate_thornthwaite_pet(temperature.data, config)
     
     # Adjust PET using land-use specific crop coefficients
     logger.info("Adjusting potential evapotranspiration using crop coefficients")
-    et = adjust_pet_with_kc(pet, landuse, kc_df, config)
+    landuse.correct()
+    et = adjust_pet_with_kc(pet, landuse.kc_grid, config)
     
     # Calculate water balance (P - ET)
     logger.info("Calculating water balance")
