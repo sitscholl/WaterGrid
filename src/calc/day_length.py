@@ -1,7 +1,5 @@
 import numpy as np
 import xarray as xr
-from typing import Optional, Union
-import cftime
 import datetime
 from pyproj import Transformer
 
@@ -98,10 +96,7 @@ def doy_to_days_since(doy, start="06-21", calendar="standard"):
             solstice_doy = (start_month - 1) * 30 + start_day
         else:
             try:
-                if hasattr(cftime, 'datetime'):
-                    solstice_date = cftime.datetime(year, start_month, start_day, calendar=calendar)
-                else:
-                    solstice_date = datetime.datetime(year, start_month, start_day)
+                solstice_date = datetime.datetime(year, start_month, start_day)
                 solstice_doy = solstice_date.timetuple().tm_yday
             except Exception as e:
                 # Fallback calculation
