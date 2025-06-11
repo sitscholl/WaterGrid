@@ -12,18 +12,22 @@ class BaseProcessor(ABC):
 
     def __init__(self, config):
         self.config = config
+        self.data = None
 
-    def resample_to_target_grid(self, source: xr.DataArray, target: xr.DataArray, method: str = "bilinear") -> xr.DataArray:
+    def resample_to_target_grid(self, target: xr.DataArray, method: str = "bilinear") -> xr.DataArray:
         """Resample a source grid to match a target grid while preserving chunking.
         
         Args:
             source: DataArray to resample
             target: DataArray with the target grid
             method: Resampling method (nearest, bilinear, cubic)
-            
-        Returns:
-            Resampled DataArray with exact same x and y coordinates as target grid
+
         """
+
+        if self.data is None:
+            raise ValueError("No data loaded. Please load data before resampling.")
+        source = self.data
+        
         # Check if source has rio accessor
         if not hasattr(source, "rio"):
             # Convert to rioxarray
@@ -61,7 +65,7 @@ class BaseProcessor(ABC):
         # Use xarray's interp which preserves chunking
         resampled = source.interp_like(target, method = resampling_methods[method])
         
-        return resampled
+        self.data = resampled
 
     @abstractmethod
     def load():
