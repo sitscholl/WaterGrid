@@ -246,7 +246,7 @@ def load_kc_coefficients(config: Dict[str, Any]) -> pd.DataFrame:
     
     # Load Excel file
     sheet_name = kc_config.get("sheet_name", 0)
-    kc_df = pd.read_excel(kc_path, sheet_name=sheet_name)
+    kc_df = pd.read_excel(kc_path, sheet_name=sheet_name, na_values = [' ']).fillna(0)
     
     # Validate DataFrame structure
     required_columns = ["landuse_code", *list(config['seasons'].keys())]
