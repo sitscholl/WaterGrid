@@ -1,10 +1,9 @@
 from abc import ABC, abstractmethod
 import logging
 
-from pandas.errors import AbstractMethodError
 import xarray as xr
-import rioxarray
-from rasterio.enums import Resampling
+
+from ..resampling import resample_to_target_grid
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,7 @@ class BaseProcessor(ABC):
         self.config = config
         self.data = None
 
-    def resample_to_target_grid(self, target: xr.DataArray, method: str = "bilinear") -> xr.DataArray:
+    def resample_match(self, target: xr.DataArray, method: str = "bilinear") -> xr.DataArray:
         """Resample a source grid to match a target grid while preserving chunking.
         
         Args:
@@ -28,42 +27,7 @@ class BaseProcessor(ABC):
             raise ValueError("No data loaded. Please load data before resampling.")
         source = self.data
         
-        # Check if source has rio accessor
-        if not hasattr(source, "rio"):
-            # Convert to rioxarray
-            source = rioxarray.open_rasterio(source)
-        
-        # Get target bounds and CRS
-        target_crs = target.rio.crs
-        
-        # Map interp methods
-        resampling_methods_rasterio = {        
-            "nearest": Resampling.nearest,
-            "bilinear": Resampling.bilinear,
-            "cubic": Resampling.cubic,
-        }
-
-        resampling_methods = {
-            "nearest": "nearest",
-            "bilinear": "linear",
-            "cubic": "cubic",
-        }    
-
-        if method not in resampling_methods:
-            raise ValueError(f"Unsupported resampling method: {method}. "
-                        f"Supported methods: {list(resampling_methods.keys())}")
-        
-        # First ensure the source is in the same CRS as the target
-        if source.rio.crs != target_crs:
-            # This step still loads into memory, but we need it for CRS transformation
-            logger.warning(f"Source CRS ({source.rio.crs}) does not match target CRS ({target_crs}). Reprojecting source to match target CRS (requires array to be loaded into memory).")
-            source = source.rio.reproject(
-                target_crs,
-                resampling=resampling_methods_rasterio[method]
-            )
-                    
-        # Use xarray's interp which preserves chunking
-        resampled = source.interp_like(target, method = resampling_methods[method])
+        resampled = resample_to_target_grid(source, target, method)
         
         self.data = resampled
 
