@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import dask
-from dask.diagnostics import ProgressBar
 
 from src.data_io import (
     load_temperature_data,
@@ -28,6 +27,7 @@ from src.data_io import (
     save_water_balance,
     save_metadata
 )
+from src.calc.day_length import day_lengths, get_lat_in_4326
 from src.resampling import resample_to_target_grid
 from src.utils import get_season
 from src.config import DATETIME_FREQUENCY_MAPPING
@@ -165,43 +165,20 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
         (16 * (10 * (temp_monthly.groupby('time.year') / heat_index))).groupby('time.year') ** a,
         0
     ).drop('year')
+    unadjusted_pet = unadjusted_pet.rio.write_crs(temperature.rio.crs)
     
     # Step 4: Apply latitude correction if requested
-    ##TODO: Reimplement this correctly
     if apply_lat_correction:
-        raise NotImplementedError("Latitude correction is not yet implemented.")
-        # Get latitude from the spatial coordinates
-        # This assumes temperature data has y coordinate in latitude
-        if "latitude" in temperature.coords:
-            latitude = temperature.latitude
-        elif "y" in temperature.coords:
-            # Approximate latitude from y coordinate (assuming UTM)
-            # This is a simplification and should be improved for production use
-            # by properly transforming coordinates
-            y_center = temperature.y.mean().values
-            # Rough approximation for UTM zone 32N
-            latitude = (y_center - 0) / 111320  # 1 degree ≈ 111.32 km
-        else:
-            raise ValueError("Cannot determine latitude from temperature data")
-        
-        # Calculate day length correction factor based on latitude and month
-        # This is a simplified approach using average day length by month and latitude
-        # A more accurate approach would calculate day length for each day
-        
-        # Standard number of days in each month
-        days_in_month = xr.DataArray(
-            [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
-            dims=["month"],
-            coords={"month": np.arange(1, 13)}
+        dates = xr.DataArray(
+            unadjusted_pet.time.values, 
+            dims=['time'], 
+            coords={'time': unadjusted_pet.time.values}
         )
-        
-        # Average day length correction factors by latitude and month
-        # These are approximate values and should be calculated more precisely
-        # for production use
-        correction_factors = calculate_day_length_correction(latitude, temp_monthly)
-        
-        # Apply correction factors
-        pet = unadjusted_pet * correction_factors
+        lat = get_lat_in_4326(unadjusted_pet.isel(time = 0))
+
+        day_length = day_lengths(dates, lat)
+        day_length = day_length.assign_coords({'lat': unadjusted_pet.lat.values})
+        pet = unadjusted_pet * day_length
     else:
         pet = unadjusted_pet
     
@@ -240,56 +217,6 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
         pet = pet_daily
     
     return pet
-
-
-def calculate_day_length_correction(latitude: xr.DataArray, temperature: xr.DataArray) -> xr.DataArray:
-    """Calculate day length correction factors for Thornthwaite PET.
-    
-    Args:
-        latitude: DataArray containing latitude values (degrees)
-        temperature: DataArray containing temperature data with time dimension
-        
-    Returns:
-        DataArray containing day length correction factors
-    """
-    # Extract month information from temperature time coordinate
-    months = temperature.time.dt.month
-    
-    # Average day length as a function of latitude and month
-    # These values are approximations and should be calculated more precisely
-    # for production use
-    
-    # Convert latitude to radians
-    lat_rad = np.deg2rad(latitude)
-    
-    # Calculate correction factors for each month
-    correction = xr.zeros_like(temperature)
-    
-    for i, month in enumerate(months.values):
-        # Calculate solar declination (radians)
-        # Approximate formula: δ = 0.4093 * sin(2π * (284 + day_of_year) / 365)
-        # Using middle day of each month as an approximation
-        day_of_year = 15 + (month - 1) * 30  # Approximate day of year for middle of month
-        declination = 0.4093 * np.sin(2 * np.pi * (284 + day_of_year) / 365)
-        
-        # Calculate day length (hours)
-        # Formula: N = 24/π * arccos(-tan(φ) * tan(δ))
-        # where φ is latitude and δ is declination
-        day_length = 24 / np.pi * np.arccos(-np.tan(lat_rad) * np.tan(declination))
-        
-        # Calculate correction factor
-        # Correction = N/12 * days_in_month/30
-        days_in_month = temperature.time.dt.daysinmonth[i].values
-        month_correction = day_length / 12 * days_in_month / 30
-        
-        # Assign to the correction DataArray
-        correction = xr.where(
-            temperature.time.dt.month == month,
-            month_correction,
-            correction
-        )
-    
-    return correction
 
 
 def adjust_pet_with_kc(pet: xr.DataArray, landuse: xr.DataArray, 

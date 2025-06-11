@@ -49,7 +49,7 @@ processing:
 calculation:
   thornthwaite:
     # Latitude correction method
-    latitude_correction: false #implement this
+    latitude_correction: true #implement this
     daily_downscaling: false
   water_balance:
     # Soil parameters for water balance calculation

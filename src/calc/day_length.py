@@ -1,7 +1,9 @@
 import numpy as np
 import xarray as xr
 import datetime
-from pyproj import Transformer
+import calendar
+
+import rioxarray
 
 def day_lengths(
     dates: xr.DataArray,
@@ -44,7 +46,7 @@ def day_lengths(
     
     # Calculate Julian date from solstice
     julian_date_from_solstice = doy_to_days_since(
-        dates.time.dt.dayofyear, start=summer_solstice, calendar=cal
+        dates.time.dt.dayofyear, start=summer_solstice, cal=cal
     )
     
     # Calculate day length using the formula from xclim
@@ -73,16 +75,16 @@ def get_calendar(da):
     except AttributeError:
         return "standard"
 
-def days_in_year(year, calendar="standard"):
+def days_in_year(year, cal="standard"):
     """Get number of days in a year for given calendar"""
-    if calendar in ["360_day"]:
+    if cal in ["360_day"]:
         return 360
-    elif calendar in ["365_day", "noleap"]:
+    elif cal in ["365_day", "noleap"]:
         return 365
     else:  # standard, gregorian, proleptic_gregorian
         return 366 if calendar.isleap(year) else 365
 
-def doy_to_days_since(doy, start="06-21", calendar="standard"):
+def doy_to_days_since(doy, start="06-21", cal="standard"):
     """Convert day of year to days since a reference date"""
     start_month, start_day = map(int, start.split("-"))
     
@@ -92,7 +94,7 @@ def doy_to_days_since(doy, start="06-21", calendar="standard"):
     result = []
     for i, (year, day_of_year) in enumerate(zip(doy.time.dt.year.values, doy.values)):
         # Get day of year for summer solstice
-        if calendar == "360_day":
+        if cal == "360_day":
             solstice_doy = (start_month - 1) * 30 + start_day
         else:
             try:
@@ -101,7 +103,7 @@ def doy_to_days_since(doy, start="06-21", calendar="standard"):
             except Exception as e:
                 # Fallback calculation
                 days_in_months = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-                if calendar.isleap(year):
+                if cal.isleap(year):
                     days_in_months[1] = 29
                 solstice_doy = sum(days_in_months[:start_month-1]) + start_day
         
@@ -109,7 +111,7 @@ def doy_to_days_since(doy, start="06-21", calendar="standard"):
         days_since = day_of_year - solstice_doy
         
         # Handle year wraparound
-        year_length = days_in_year(year, calendar)
+        year_length = days_in_year(year, cal)
         if days_since < 0:
             days_since += year_length
             
@@ -120,12 +122,7 @@ def doy_to_days_since(doy, start="06-21", calendar="standard"):
 def get_lat_in_4326(da):
 
     if da.rio.crs is None:
-        raise ValueError("The input DataArray does not have a CRS defined. Canno transform coordinate values")
+        raise ValueError("The input DataArray does not have a CRS defined. Cannot transform coordinate values")
 
-    # Create transformer
-    transformer = Transformer.from_crs(da.rio.crs.to_epsg(), "EPSG:4326", always_xy=True)
-
-    # Transform coordinates
-    _, lat = transformer.transform(da.x.values, da.y.values)
-
-    return lat
+    da_4326 = da.rename({'lat': 'y', 'lon': 'x'}).rio.reproject(4326, shape = da.shape, transform = da.rio.transform())
+    return da_4326.rename({'y': 'lat'}).lat
