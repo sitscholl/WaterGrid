@@ -29,13 +29,13 @@ output:
 spatial:
   target_resolution: 250  # Output resolution in meters
   resampling_method: "bilinear"  # Method for resampling (nearest, bilinear, cubic)
-  region: WestKlein
+  region: WestGross
 
 # Temporal parameters
 temporal:
   start_date: "1989-01-01"
   end_date: "1989-12-31"
-  output_frequency: "monthly"  # Options: daily, monthly, seasonal, annual
+  output_frequency: [monthly, annual]  # Options: daily, monthly, seasonal, annual
 
 # Processing options
 processing:

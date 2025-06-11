@@ -90,6 +90,8 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     
     # Aggregate results based on output frequency
     output_frequency = config["temporal"].get("output_frequency", "monthly")
+    if isinstance(output_frequency, str):
+        output_frequency = [output_frequency]
     logger.info(f"Aggregating results to {output_frequency} frequency")
     
     # Save results
@@ -398,7 +400,7 @@ def calculate_p_minus_et(precipitation: xr.DataArray, et: xr.DataArray) -> xr.Da
             elif et_freq in DATETIME_FREQUENCY_MAPPING['monthly']:
                 # Resample to monthly
                 precipitation = precipitation.resample(time="1ME").sum()
-            elif et_freq in DATETIME_FREQUENCY_MAPPING['yearly']:
+            elif et_freq in DATETIME_FREQUENCY_MAPPING['annual']:
                 # Resample to yearly
                 precipitation = precipitation.resample(time="1YE").sum()
             else:
@@ -429,6 +431,9 @@ def save_results(water_balance: xr.DataArray, frequency: str,
         List of paths to saved output files
     """
     output_paths = []
+
+    if not all([i in ['daily', 'monthly', 'seasonal', 'annual'] for i in frequency]):
+        raise ValueError(f"Unsupported output frequency: {frequency}. Choose one of: ['daily', 'monthly', 'seasonal', 'annual']")
     
     # Check if water_balance has a time dimension
     if "time" not in water_balance.dims:
@@ -457,8 +462,10 @@ def save_results(water_balance: xr.DataArray, frequency: str,
             }
             save_metadata(metadata, output_path)
     else:
+        out_grids = []
+
         # Resample to the requested frequency
-        if frequency == "daily":
+        if "daily" in frequency:
             # No resampling needed for daily output if input is daily
             if xr.infer_freq(water_balance.time) in DATETIME_FREQUENCY_MAPPING['daily']:
                 wb_resampled = water_balance
@@ -466,16 +473,18 @@ def save_results(water_balance: xr.DataArray, frequency: str,
                 # If input is not daily, cannot produce daily output
                 logger.warning("Cannot produce daily output from non-daily input")
                 return output_paths
+            out_grids.append((wb_resampled, 'daily'))
 
-        elif frequency == "monthly":
+        if "monthly" in frequency:
             if xr.infer_freq(water_balance.time) in DATETIME_FREQUENCY_MAPPING['monthly']:
                 wb_resampled = water_balance
             else:
                 # Resample to monthly
-                wb_resampled = water_balance.resample(time="1M").sum()    
+                wb_resampled = water_balance.resample(time="1M").sum()
+            out_grids.append((wb_resampled, 'monthly'))   
 
         ##TODO: Check seasonal aggregation here            
-        elif frequency == "seasonal":
+        if "seasonal" in frequency:
             # Get season definitions from config
             season_months = config["seasons"]
             
@@ -512,58 +521,59 @@ def save_results(water_balance: xr.DataArray, frequency: str,
                 attrs=wb_resampled.attrs
             )
 
-        elif frequency == "annual":
+            out_grids.append((wb_resampled, 'seasonal'))
+
+        if "annual" in frequency:
             if xr.infer_freq(water_balance.time) in DATETIME_FREQUENCY_MAPPING['annual']:
                 wb_resampled = water_balance
             else:
                 # Resample to annual
                 wb_resampled = water_balance.resample(time="1Y").sum()
-
-        else:
-            raise ValueError(f"Unsupported output frequency: {frequency}")
+            out_grids.append((wb_resampled, 'annual'))
         
         # Save each time step as a separate file
-        for i, time_val in enumerate(wb_resampled.time.values):
-            # Extract the time step
-            wb_time_slice = wb_resampled.isel(time=i)
-            
-            # Format dates for filename
-            time_dt = pd.Timestamp(time_val)
-            
-            if frequency == "daily":
-                start_date = end_date = time_dt.strftime("%Y-%m-%d")
-            elif frequency == "monthly":
-                start_date = time_dt.strftime("%Y-%m-01")
-                end_date = time_dt.strftime("%Y-%m-%d")
-            elif frequency == "seasonal":
-                # Use season name
-                season = get_season(time_dt, season_months)
-                start_date = season
-                end_date = season
-            elif frequency == "annual":
-                start_date = time_dt.strftime("%Y-01-01")
-                end_date = time_dt.strftime("%Y-12-31")
-            
-            # Save the time slice
-            output_path = save_water_balance(
-                wb_time_slice, config, frequency, start_date, end_date
-            )
-            output_paths.append(output_path)
-            
-            # Save metadata if requested
-            if config["output"].get("create_report", True):
-                metadata = {
-                    "calculation_time": datetime.now().isoformat(),
-                    "frequency": frequency,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "statistics": {
-                        "min": float(wb_time_slice.min().values),
-                        "max": float(wb_time_slice.max().values),
-                        "mean": float(wb_time_slice.mean().values),
-                        "std": float(wb_time_slice.std().values)
+        for grid, freq in out_grids:
+            for i, time_val in enumerate(grid.time.values):
+                # Extract the time step
+                wb_time_slice = grid.isel(time=i)
+                
+                # Format dates for filename
+                time_dt = pd.Timestamp(time_val)
+                
+                if freq == "daily":
+                    start_date = end_date = time_dt.strftime("%Y-%m-%d")
+                elif freq == "monthly":
+                    start_date = time_dt.strftime("%Y-%m-01")
+                    end_date = time_dt.strftime("%Y-%m-%d")
+                elif freq == "seasonal":
+                    # Use season name
+                    season = get_season(time_dt, season_months)
+                    start_date = season
+                    end_date = season
+                elif freq == "annual":
+                    start_date = time_dt.strftime("%Y-01-01")
+                    end_date = time_dt.strftime("%Y-12-31")
+                
+                # Save the time slice
+                output_path = save_water_balance(
+                    wb_time_slice, config, freq, start_date, end_date
+                )
+                output_paths.append(output_path)
+                
+                # Save metadata if requested
+                if config["output"].get("create_report", True):
+                    metadata = {
+                        "calculation_time": datetime.now().isoformat(),
+                        "frequency": frequency,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "statistics": {
+                            "min": float(wb_time_slice.min().values),
+                            "max": float(wb_time_slice.max().values),
+                            "mean": float(wb_time_slice.mean().values),
+                            "std": float(wb_time_slice.std().values)
+                        }
                     }
-                }
-                save_metadata(metadata, output_path)
+                    save_metadata(metadata, output_path)
     
     return output_paths
