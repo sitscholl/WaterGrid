@@ -47,14 +47,14 @@ processing:
 
 # Calculation parameters
 calculation:
+  temperature:
+    temperature_correction: true
+    radiation_files: "data/rad_corr.nc"
+  precipitation:
+    precipitation_correction: true
   thornthwaite:
-    # Latitude correction method
-    latitude_correction: true #implement this
-    daily_downscaling: false
-  water_balance:
-    # Soil parameters for water balance calculation
-    include_soil_moisture: false  # If true, include soil moisture in calculation
-    # soil_moisture_capacity: 100  # mm, only used if include_soil_moisture is true
+    latitude_correction: true
+    daily_downscaling: false #not implemented
 
 # Seasonal Kc coefficient periods (for mapping seasonal values)
 seasons:

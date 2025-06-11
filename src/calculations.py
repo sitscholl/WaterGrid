@@ -18,21 +18,16 @@ import pandas as pd
 import xarray as xr
 import dask
 
+from src.core import Landuse, Precipitation, Temperature
 from src.data_io import (
-    load_temperature_data,
-    load_precipitation_data,
-    load_landuse_data,
-    load_kc_coefficients,
     save_water_balance,
     save_metadata
 )
 from src.calc.evapotranspiration import calculate_thornthwaite_pet, adjust_pet_with_kc
-from src.resampling import resample_to_target_grid
 from src.utils import get_season
 from src.config import DATETIME_FREQUENCY_MAPPING
 
 logger = logging.getLogger(__name__)
-
 
 def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     """Calculate water balance using the Thornthwaite method.
@@ -44,18 +39,16 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
         List of paths to saved output files
     """
     # Load input data
-    temp_ds = load_temperature_data(config)
-    precip_ds = load_precipitation_data(config)
-    landuse = load_landuse_data(config)
-    kc_df = load_kc_coefficients(config)
-    
-    # Extract variables from datasets
-    temp_var = config["input"]["temperature"]["variable"]
-    precip_var = config["input"]["precipitation"]["variable"]
-    
-    temperature = temp_ds[temp_var]
-    precipitation = precip_ds[precip_var]
-    
+    temperature = Temperature(config)
+    temperature.load()
+
+    precipitation = Precipitation(config)
+    precipitation.load()
+
+    landuse = Landuse(config)
+    landuse.load()
+    landuse.correct()
+        
     # Resample data to target grid if needed
     target_resolution = config["spatial"].get("target_resolution", 5)  # Default to 5m
     resampling_method = config["spatial"].get("resampling_method", "bilinear")
@@ -64,12 +57,8 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     logger.info(f"Resampling data to target resolution of {target_resolution}m")
     
     # Resample temperature and precipitation to target grid
-    temperature = resample_to_target_grid(
-        temperature, landuse, resampling_method
-    )
-    precipitation = resample_to_target_grid(
-        precipitation, landuse, resampling_method
-    )
+    temperature.resample_to_target_grid(landuse.data, resampling_method)
+    precipitation.resample_to_target_grid(landuse.data, resampling_method)
     
     # Calculate potential evapotranspiration using Thornthwaite method
     logger.info("Calculating potential evapotranspiration using Thornthwaite method")
