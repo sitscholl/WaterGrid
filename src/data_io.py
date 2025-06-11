@@ -218,10 +218,11 @@ def load_landuse_data(config: Dict[str, Any]) -> rioxarray.raster_array.RasterAr
             resampling=Resampling.nearest
         )
 
-    bounds = config['spatial'].get('bounds')
-    if bounds is not None:
-        minx, miny, maxx, maxy = tuple(bounds.values())
-        ##TODO: Determine right order of miny and maxy automatically
+    region_name = config['spatial'].get('region')
+    if region_name is not None:
+        if region_name not in BOUNDING_BOXES.keys():
+            raise KeyError(f"Region '{region_name}' not found in BOUNDING_BOXES. Use one of {list(BOUNDING_BOXES.keys())}")
+        minx, miny, maxx, maxy = BOUNDING_BOXES[region_name]
         landuse = landuse.sel(lon = slice(minx, maxx), lat = slice(maxy, miny))
     
     logger.info(f"Loaded land-use data from {landuse_path}")
