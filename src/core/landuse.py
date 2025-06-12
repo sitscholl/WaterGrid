@@ -16,9 +16,9 @@ class Landuse(BaseProcessor):
     def __init__(self, config):
         super().__init__(config)
 
-        self.data = None
         self.coefficients = None
         self.kc_grid = None
+        self.var_name = 'landuse'
 
     def load(self):
         """Load land-use data from GeoTIFF."""

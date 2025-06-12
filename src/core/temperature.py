@@ -13,13 +13,12 @@ class Temperature(BaseProcessor):
 
     def __init__(self, config):
         super().__init__(config)
-
-        self.data = None
         self.corrected = False
 
     def load(self, var_name: str = 'temperature'):
         """Load temperature data from zarr dataset. """
         self.data = load_climate_data(self.config, var_name)
+        self.var_name = var_name
 
     def _load_radiation(self):
 
@@ -56,5 +55,4 @@ class Temperature(BaseProcessor):
             tas_corr = ((np.abs(self.data) * 0.93).groupby('time.month') * radiation_data) + self.data
 
             self.data = tas_corr.compute()
-            self.corrected = True
 

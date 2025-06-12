@@ -3,11 +3,11 @@
 # Input data paths
 input:
   temperature:
-    path: "data/crespi.zarr"
+    path: "C:/OneDrive/OneDrive - Scientific Network South Tyrol/Codebase/Rechunk_Crespi_Files/data/crespi.zarr" #"data/crespi.zarr"
     variable: "temperature"  # Variable name in zarr dataset
     units: "celsius"  # Expected units
   precipitation:
-    path: "data/crespi.zarr"
+    path: "C:/OneDrive/OneDrive - Scientific Network South Tyrol/Codebase/Rechunk_Crespi_Files/data/crespi.zarr" #"data/crespi.zarr"
     variable: "precipitation"  # Variable name in zarr dataset
     units: "mm"  # Expected units
   landuse:
@@ -24,6 +24,16 @@ output:
   format: "GTiff"
   compression: "LZW"
   create_report: false  # Generate metadata and statistics report
+
+  # intermediate:
+  #   temperature: 
+  #     pattern: "data/temp/tair_{timestamp}.tiff"
+  #     start_date: "1989-01-01"
+  #     end_date: "1989-01-10"
+  #   precipitation: 
+  #     pattern: "data/temp/prec_{timestamp}.tiff"
+  #     start_date: "1989-01-01"
+  #     end_date: "1989-01-10"
 
 # Spatial parameters
 spatial:
