@@ -44,10 +44,7 @@ class Temperature(BaseProcessor):
             logger.info('Correcting temperature data')
 
             radiation_data = self._load_radiation()
-            
-            # Ensure consistent chunking between datasets
-            chunk_size = self.config["processing"]["chunk_size"]
-            
+                        
             # Resample temperature data to radiation grid
             tair_resampled = resample_to_target_grid(
                 source = self.data,
@@ -56,10 +53,10 @@ class Temperature(BaseProcessor):
             )
             
             # Apply consistent chunking to both datasets
-            tair_resampled = tair_resampled.chunk(chunk_size)
-            #radiation_data = radiation_data.chunk(chunk_size)
+            # chunk_size = self.config["processing"]["chunk_size"]
+            # tair_resampled = tair_resampled.chunk(chunk_size)
+            # radiation_data = radiation_data.chunk(chunk_size)
             
-            # Optimize computation by breaking it into smaller steps
             # 1. Calculate absolute value and scaling
             abs_scaled = np.abs(tair_resampled) * 0.93
             
