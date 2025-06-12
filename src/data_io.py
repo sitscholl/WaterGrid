@@ -105,6 +105,9 @@ def apply_spatial_filter(data: Union[xr.Dataset, xr.DataArray, rioxarray.raster_
         else:
             # If there's only one latitude value, just use regular slice
             data = data.sel(lon=slice(minx, maxx), lat=slice(miny, maxy))
+
+    if any([i == 0 for j, i in data.sizes.items()]):
+        logger.warning("Data contains zero-sized dimensions after spatial filtering. Check bounds or data crs.")
     
     logger.debug(f"Applied spatial filter for region '{region_name}'")
     return data
