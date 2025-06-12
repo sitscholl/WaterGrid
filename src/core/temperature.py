@@ -36,15 +36,7 @@ class Temperature(BaseProcessor):
             rad_corr = rad_corr.rename({'x': 'lon', 'y': 'lat'})
 
         rad_corr = apply_spatial_filter(rad_corr, self.config)
-
-        rad_corr = resample_to_target_grid(
-            source = rad_corr, 
-            target = self.data, 
-            method = self.config["spatial"].get("resampling_method", "bilinear")
-            )
-
-        rad_corr = rad_corr.chunk(self.config["processing"]["chunk_size"])
-
+                
         return rad_corr
 
     def correct(self):
@@ -52,7 +44,37 @@ class Temperature(BaseProcessor):
             logger.info('Correcting temperature data')
 
             radiation_data = self._load_radiation()
-            tas_corr = ((np.abs(self.data) * 0.93).groupby('time.month') * radiation_data) + self.data
-
+            
+            # Ensure consistent chunking between datasets
+            chunk_size = self.config["processing"]["chunk_size"]
+            
+            # Resample temperature data to radiation grid
+            tair_resampled = resample_to_target_grid(
+                source = self.data,
+                target = radiation_data,
+                method = self.config["spatial"].get("resampling_method", "bilinear")
+            )
+            
+            # Apply consistent chunking to both datasets
+            tair_resampled = tair_resampled.chunk(chunk_size)
+            #radiation_data = radiation_data.chunk(chunk_size)
+            
+            # Optimize computation by breaking it into smaller steps
+            # 1. Calculate absolute value and scaling
+            abs_scaled = np.abs(tair_resampled) * 0.93
+            
+            # 2. Group by month
+            grouped = abs_scaled.groupby('time.month')
+            
+            # 3. Multiply with radiation data
+            correction = grouped * radiation_data
+            
+            # 4. Add original temperature data
+            tas_corr = correction + tair_resampled
+            
+            # 5. Compute the result with optimized parallelism
+            logger.info('Computing corrected temperature data')
             self.data = tas_corr.compute()
+            self.corrected = True
+            logger.info('Temperature correction completed')
 
