@@ -50,6 +50,7 @@ class BaseProcessor(ABC):
                 start_date = self.config['output'].get('intermediate', {}).get(self.var_name, {}).get('start_date', datetime(1980, 1, 1))
                 end_date = self.config['output'].get('intermediate', {}).get(self.var_name, {}).get('end_date', datetime(2030, 12, 31))
                 data_to_write = self.data.sel(time=slice(start_date, end_date))
+                data_to_write = data_to_write.rename({'lat': 'y', 'lon': 'x'})
 
                 for timestamp, data in data_to_write.groupby("time"):
                     timestamp_str = to_datetime(timestamp).strftime('%Y%m%d_%H%M%S')
