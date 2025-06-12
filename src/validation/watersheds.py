@@ -1,5 +1,6 @@
 import xarray as xr
 import numpy as np
+import pandas as pd
 
 import logging
 from pathlib import Path
@@ -18,7 +19,6 @@ class Watersheds(BaseProcessor):
 
         self.var_name = 'watersheds'
         self.data = {}
-        self.aggregated_data = {}
 
         watersheds_config = config['input'].get('watersheds')
         if watersheds_config is None:
@@ -75,10 +75,16 @@ class Watersheds(BaseProcessor):
             
             self.data[ws_file.stem] = ws_re
 
-    def aggregate(self, data: xr.DataArray, method: str = 'sum', dim = ['lon', 'lat']) -> xr.DataArray:
+    def aggregate(self, data: xr.DataArray, method: str = 'sum', dim = ['lon', 'lat']) -> pd.DataFrame:
 
         if len(self.data) == 0:
             raise ValueError("No watersheds available for aggregation. Load watersheds first.")
+        
+        # Check if time dimension exists in the data
+        has_time_dim = 'time' in data.dims
+        
+        # Dictionary to store results for each watershed
+        results = {}
         
         for ws_name, ws_data in self.data.items():
             # Create a proper boolean mask where valid watershed values exist
@@ -89,12 +95,38 @@ class Watersheds(BaseProcessor):
             # Apply the mask to the data
             masked_data = data.where(ws_mask)
             
+            # Aggregate data based on the specified method
             if method == 'sum':
-                self.aggregated_data[ws_name] = masked_data.sum(dim=dim)
+                aggregated = masked_data.sum(dim=dim)
             elif method == 'mean':
-                self.aggregated_data[ws_name] = masked_data.mean(dim=dim)
+                aggregated = masked_data.mean(dim=dim)
             else:
                 raise ValueError(f"Unsupported aggregation method: {method}")
+            
+            # Store the result for this watershed
+            results[ws_name] = aggregated
+        
+        # Create DataFrame based on whether time dimension exists
+        if has_time_dim:
+            # For multiple timesteps: create a DataFrame with time as index and watersheds as columns
+            df_data = {}
+            time_values = data.time.values
+            
+            for ws_name, result in results.items():
+                # Extract values for each timestep
+                df_data[ws_name] = result.values
+            
+            # Create DataFrame with time as index and watersheds as columns
+            model_tbl = pd.DataFrame(df_data, index=time_values)
+            model_tbl.index = model_tbl.index.set_names('time')
+            model_tbl = model_tbl.melt(ignore_index = False, value_name = 'modeled_values', var_name = 'Code')
+            return model_tbl
+        else:
+            # For single timestep: create a DataFrame with watersheds as index
+            return pd.DataFrame(
+                {"modeled_values": [result.values.item() for result in results.values()]},
+                index=results.keys()
+            )
                 
 if __name__ == "__main__":
     import yaml
@@ -108,6 +140,6 @@ if __name__ == "__main__":
 
     watersheds = Watersheds(config)
     watersheds.load(landuse.data)
-    watersheds.aggregate(landuse.data)
+    aggregated_data = watersheds.aggregate(landuse.data)
 
-    print(watersheds.aggregated_data)
+    print(aggregated_data)
