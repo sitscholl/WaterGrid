@@ -34,7 +34,7 @@ class Watersheds(BaseProcessor):
 
         ws_config = self.config['input']['watersheds']
         ws_root = Path(ws_config.get('root', '.'))
-        ws_files = list(ws_root.glob(ws_config.get('pattern', '*.tif')))[:3]
+        ws_files = list(ws_root.glob(ws_config.get('pattern', '*.tif')))
         fill_value = ws_config.get('fill_value', -999)
 
         logger.debug(f"Found {len(ws_files)} watershed files")
@@ -109,3 +109,5 @@ if __name__ == "__main__":
     watersheds = Watersheds(config)
     watersheds.load(landuse.data)
     watersheds.aggregate(landuse.data)
+
+    print(watersheds.aggregated_data)
