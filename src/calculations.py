@@ -46,7 +46,7 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
 
     precipitation = Precipitation(config)
     precipitation.load()
-    #precipitation.to_geotiff()
+    precipitation.to_geotiff()
 
     landuse = Landuse(config)
     landuse.load()
