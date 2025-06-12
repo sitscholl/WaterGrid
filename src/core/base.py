@@ -61,8 +61,4 @@ class BaseProcessor(ABC):
     def load():
         """Abstract method to load data, must be implemented by subclasses."""
         pass
-
-    @abstractmethod
-    def correct():
-        """Abstract method to correct data, must be implemented by subclasses."""
-        pass
+    
