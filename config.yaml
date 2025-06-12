@@ -16,6 +16,12 @@ input:
   kc_coefficients:
     path: "data/kc_values.xlsx"
     sheet_name: "marsoner"
+  watersheds:
+    root: data/watersheds_validation #C:/OneDrive/Scientific Network South Tyrol/Wasserbilanz Südtirol - General/8_drought_indicators_water_group/sample_points/watersheds/raster
+    pattern: "*.tif"
+  stations:
+    root: C:/OneDrive/Scientific Network South Tyrol/Wasserbilanz Südtirol - General/1_data/discharge_data/AW_Durchflussmessreihen
+    pattern: "*TagMittel.csv"
 
 # Output configuration
 output:

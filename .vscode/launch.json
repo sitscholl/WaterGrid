@@ -11,6 +11,16 @@
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
+            "env": { "PYTHONPATH": "${workspaceRoot}"},
+            "args": ["-v"]
+        }
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "env": { "PYTHONPATH": "${workspaceRoot}"},
             "args": ["-v"]
         }
     ]
