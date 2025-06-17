@@ -18,14 +18,14 @@ input:
     sheet_name: "marsoner"
   watersheds:
     root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/watersheds_validation #C:/OneDrive/Scientific Network South Tyrol/Wasserbilanz Südtirol - General/8_drought_indicators_water_group/sample_points/watersheds/raster
-    pattern: "*.tif"
+    pattern: "198*.tif"
   stations:
     root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/AW_Durchflussmessreihen
     pattern: "*TagMittel.csv"
 
 # Output configuration
 output:
-  directory: "results"
+  directory: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/results
   filename_pattern: "water_balance_{frequency}_{start_date}_{end_date}.tif"
   format: "GTiff"
   compression: "LZW"
