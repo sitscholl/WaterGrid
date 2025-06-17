@@ -176,7 +176,7 @@ class Validator:
         if freq != 'YE-SEP':
             raise NotImplementedError("Only 'YE-SEP' frequency is currently supported")
 
-        balance_agg = water_balance.resample(time = freq).sum(min_count = 365)
+        balance_agg = water_balance.resample(time = freq).sum(min_count = 12)
         modeled_data = watersheds.aggregate(balance_agg) #unit is in mm/year
         modeled_data.set_index('Code', append = True, inplace = True)
         modeled_data.replace(0, np.nan, inplace=True) #years with less values than min_count have values of 0
@@ -204,6 +204,10 @@ class Validator:
         for code, data in validation_tbl.groupby(level = [1]):
             
             plot_data = data.melt(ignore_index=False, var_name='variable', value_name='value').reset_index()
+
+            if plot_data['value'].isna().all():
+                logger.warning(f"No validation data available for station {code}. Skipping plot generation.")
+                continue
             
             g = sns.relplot(data = plot_data, x = 'time', y = 'value', hue = 'variable', kind = 'line', height = 2)
             g.set_titles('{col_name}')
