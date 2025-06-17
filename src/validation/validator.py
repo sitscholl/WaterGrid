@@ -150,7 +150,7 @@ class Validator:
         
         return result
 
-    def aggregate(self, freq: str = 'YE-SEP', method = np.mean, min_size: int = 365):
+    def aggregate(self, freq: str = 'YE-SEP', method = "mean", min_size: int = 365):
 
         if self.data is None:
             raise ValueError("Data has not been loaded. Please load data first before calculating discharge.")
@@ -201,7 +201,7 @@ class Validator:
         out_dir = Path(self.config['output'].get('directory', '.'), 'figures')
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        for code, data in validation_tbl.groupby(level = [1]):
+        for code, data in validation_tbl.groupby(level = 1):
             
             plot_data = data.melt(ignore_index=False, var_name='variable', value_name='value').reset_index()
 
