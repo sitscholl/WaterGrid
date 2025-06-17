@@ -16,14 +16,15 @@ from typing import Dict, Any, List
 
 import pandas as pd
 import xarray as xr
-import dask
 
 from src.core import Landuse, Precipitation, Temperature
+from src.validation import Validator, Watersheds
 from src.data_io import (
     save_water_balance,
     save_metadata
 )
 from src.calc.evapotranspiration import calculate_thornthwaite_pet, adjust_pet_with_kc
+from src.cluster import start_dask_cluster
 from src.utils import get_season
 from src.config import DATETIME_FREQUENCY_MAPPING
 
@@ -38,10 +39,14 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     Returns:
         List of paths to saved output files
     """
+
+    # if config['processing'].get('use_dask', False):
+    #     client, cluster = start_dask_cluster()
+
     # Load input data
     temperature = Temperature(config)
     temperature.load()
-    temperature.correct()
+    # temperature.correct() #TODO: Improve this calculation as dask graph seems very inefficient
     temperature.to_geotiff()
 
     precipitation = Precipitation(config)
@@ -65,6 +70,7 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     # Calculate potential evapotranspiration using Thornthwaite method
     logger.info("Calculating potential evapotranspiration using Thornthwaite method")
     pet = calculate_thornthwaite_pet(temperature.data, config)
+    pet.isel(time = 6).rename({'lon': 'x', 'lat': 'y'}).rio.to_raster('pet_corr.tif')
     
     # Adjust PET using land-use specific crop coefficients
     logger.info("Adjusting potential evapotranspiration using crop coefficients")
@@ -76,8 +82,16 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     water_balance = calculate_p_minus_et(precipitation.data, et)
 
     # Compute chunks
-    logger.info('Computing chunks...')
-    water_balance = water_balance.compute()
+    # logger.info('Computing chunks...')
+    # water_balance = water_balance.compute()
+
+    # Validation
+    watersheds = Watersheds(config)
+    watersheds.load(target = landuse.data)
+
+    validator = Validator(config)
+    validation_tbl = validator.validate(watersheds, water_balance)
+    validator.plot_timeseries(validation_tbl)
     
     # Aggregate results based on output frequency
     output_frequency = config["temporal"].get("output_frequency", "monthly")
@@ -137,6 +151,8 @@ def calculate_p_minus_et(precipitation: xr.DataArray, et: xr.DataArray) -> xr.Da
     water_balance.attrs["long_name"] = "Water Balance (P - ET)"
     water_balance.attrs["units"] = "mm"
     water_balance.attrs["description"] = "Climatic water balance calculated as precipitation minus evapotranspiration"
+
+    water_balance = water_balance.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
     
     return water_balance
 

@@ -18,7 +18,7 @@ input:
     sheet_name: "marsoner"
   watersheds:
     root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/watersheds_validation #C:/OneDrive/Scientific Network South Tyrol/Wasserbilanz Südtirol - General/8_drought_indicators_water_group/sample_points/watersheds/raster
-    pattern: "198*.tif"
+    pattern: "6455*.tif"
   stations:
     root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/AW_Durchflussmessreihen
     pattern: "*TagMittel.csv"
@@ -45,21 +45,18 @@ output:
 spatial:
   target_resolution: 250  # Output resolution in meters
   resampling_method: "bilinear"  # Method for resampling (nearest, bilinear, cubic)
-  region: Suedtirol
+  region: montal
 
 # Temporal parameters
 temporal:
-  start_date: "1989-01-01"
-  end_date: "1999-12-31"
+  start_date: "2000-01-01"
+  end_date: "2002-12-31"
   output_frequency: [monthly, annual]  # Options: daily, monthly, seasonal, annual
 
 # Processing options
 processing:
   use_dask: true
   chunk_size: auto
-  parallel_workers: 4  # Number of parallel workers for dask
-  memory_limit: "4GB"  # Memory limit for dask
-  cache_intermediates: true  # Cache intermediate results
 
 # Calculation parameters
 calculation:
