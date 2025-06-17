@@ -1,8 +1,12 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 import logging
 from pathlib import Path
+
+from src.cluster import start_dask_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +150,7 @@ class Validator:
         
         return result
 
-    def aggregate(self, freq: str = 'YE-SEP', method = np.sum, min_size: int = 365):
+    def aggregate(self, freq: str = 'YE-SEP', method = np.mean, min_size: int = 365):
 
         if self.data is None:
             raise ValueError("Data has not been loaded. Please load data first before calculating discharge.")
@@ -155,7 +159,7 @@ class Validator:
             self.data
             .groupby('Code')
             .resample(freq, include_groups=False)
-            .agg(measured_values = ('Abfluss', method), 
+            .agg(measured_values = ('Abfluss', method), #Abfluss is in m³/s per day
                  size = ('Abfluss', lambda x: len(x.dropna())),
             ))
 
@@ -169,14 +173,61 @@ class Validator:
 
     def validate(self, watersheds, water_balance, freq: str = 'YE-SEP'):
 
-        modeled_data = watersheds.aggregate(water_balance)
-        modeled_data = modeled_data.groupby('Code').resample(freq, include_groups = False).sum()
+        if freq != 'YE-SEP':
+            raise NotImplementedError("Only 'YE-SEP' frequency is currently supported")
 
-        measured_data = self.aggregate(freq = freq)
+        balance_agg = water_balance.resample(time = freq).sum(min_count = 365)
+        modeled_data = watersheds.aggregate(balance_agg) #unit is in mm/year
+        modeled_data.set_index('Code', append = True, inplace = True)
+        modeled_data.replace(0, np.nan, inplace=True) #years with less values than min_count have values of 0
 
-        validation_tbl = modeled_data.join(measured_data)
-        print(measured_data)
+        ## Transform from mm/year to m³/year 
+        if not hasattr(water_balance, 'rio'):
+            raise ValueError('Rio accessor not available. Cannot calculate discharge')
+        res = water_balance.rio.resolution()[0]
+        modeled_discharge = modeled_data * (res**2) / 1000
 
+        ## Transform from m³/year to m³/s
+        modeled_discharge /= (365 * 24 * 60 * 60)
+
+        measured_discharge = self.aggregate(freq = freq) #unit is in m³/s (average discharge per hydrological year)
+
+        validation_tbl = modeled_discharge.join(measured_discharge)
+        
+        return validation_tbl
+    
+    def plot_timeseries(self, validation_tbl):
+
+        out_dir = Path(self.config['output'].get('directory', '.'), 'figures')
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        for code, data in validation_tbl.groupby(level = [1]):
+            
+            plot_data = data.melt(ignore_index=False, var_name='variable', value_name='value').reset_index()
+            
+            g = sns.relplot(data = plot_data, x = 'time', y = 'value', hue = 'variable', kind = 'line', height = 2)
+            g.set_titles('{col_name}')
+            g.set_ylabels('Abfluss [m³/s]')
+            g.set_xlabels('Hydrologisches Jahr')
+
+            plt.tight_layout()
+            sns.move_legend(
+                g, "lower center",
+                bbox_to_anchor=(.5, .93), ncol=2, title=None, frameon=False,
+            )
+            
+            #Add error metrics
+            ws_correlation = data['measured_values'].corr(data['modeled_values'])
+            ws_error = (data['modeled_values'] - data['measured_values']).mean()
+            
+            ax = g.axes[0][0]
+            label = f"p = {ws_correlation:.2f}\ne = {ws_error:.2f}%"
+            ax.annotate(text = label, xy = (.05, .85), xycoords = 'axes fraction')
+
+            plt.savefig(f'{out_dir}/{code}.png', dpi = 300, bbox_inches = 'tight')
+            plt.close()
+
+            logger.debug(f"Saved figure to {out_dir}/{code}.png")
 
 
 if __name__ == "__main__":
@@ -190,6 +241,8 @@ if __name__ == "__main__":
     with open("config.yaml", "r", encoding = 'utf-8') as f:
         config = yaml.safe_load(f)
 
+    client, cluster = start_dask_cluster()
+
     precipitation = Precipitation(config)
     precipitation.load()
 
@@ -197,4 +250,5 @@ if __name__ == "__main__":
     watersheds.load(precipitation.data)
 
     validator = Validator(config)
-    validator.validate(watersheds, precipitation.data)
+    validation_tbl = validator.validate(watersheds, precipitation.data)
+    validator.plot_timeseries(validation_tbl)
