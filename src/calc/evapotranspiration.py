@@ -86,7 +86,7 @@ def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]
 
         day_length = day_lengths(dates, lat)
         day_length = day_length.assign_coords({'lat': unadjusted_pet.lat.values})
-        pet = unadjusted_pet * day_length
+        pet = unadjusted_pet * (day_length / 12) * (unadjusted_pet.time.dt.days_in_month / 30)
     else:
         pet = unadjusted_pet
     
