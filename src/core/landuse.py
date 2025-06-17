@@ -38,6 +38,11 @@ class Landuse(BaseProcessor):
         if "y" in landuse.coords:
             landuse = landuse.rename({"y": "lat"})
         landuse = landuse.rio.set_spatial_dims(x_dim = 'lon', y_dim = 'lat')
+
+        # lat_values = landuse.lat.values
+        # lat_ascending = lat_values[0] < lat_values[-1]
+        # if not lat_ascending:
+        #     landuse = landuse.reindex(lat=lat_values[::-1])
         
         # Check CRS
         expected_crs = landuse_config.get("crs", "EPSG:32632")
