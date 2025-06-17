@@ -25,6 +25,8 @@ dependencies = [
     "bottleneck>=1.4.0",
     "scipy>=1.10.1",
     "netcdf4>=1.7.2",
+    "matplotlib>=3.7.5",
+    "seaborn>=0.13.2",
 ]
 
 [project.optional-dependencies]

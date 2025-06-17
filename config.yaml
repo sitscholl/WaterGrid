@@ -3,24 +3,24 @@
 # Input data paths
 input:
   temperature:
-    path: "C:/OneDrive/OneDrive - Scientific Network South Tyrol/Codebase/Rechunk_Crespi_Files/data/crespi.zarr" #"data/crespi.zarr"
+    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Daten/crespi.zarr" #"data/crespi.zarr"
     variable: "temperature"  # Variable name in zarr dataset
     units: "celsius"  # Expected units
   precipitation:
-    path: "C:/OneDrive/OneDrive - Scientific Network South Tyrol/Codebase/Rechunk_Crespi_Files/data/crespi.zarr" #"data/crespi.zarr"
+    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Daten/crespi.zarr" #"data/crespi.zarr"
     variable: "precipitation"  # Variable name in zarr dataset
     units: "mm"  # Expected units
   landuse:
-    path: "data/landuse_250m.tif"
+    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/landuse_250m.tif"
     crs: "EPSG:32632"
   kc_coefficients:
-    path: "data/kc_values.xlsx"
+    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/kc_values.xlsx"
     sheet_name: "marsoner"
   watersheds:
-    root: data/watersheds_validation #C:/OneDrive/Scientific Network South Tyrol/Wasserbilanz Südtirol - General/8_drought_indicators_water_group/sample_points/watersheds/raster
+    root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/watersheds_validation #C:/OneDrive/Scientific Network South Tyrol/Wasserbilanz Südtirol - General/8_drought_indicators_water_group/sample_points/watersheds/raster
     pattern: "*.tif"
   stations:
-    root: C:/OneDrive/Scientific Network South Tyrol/Wasserbilanz Südtirol - General/1_data/discharge_data/AW_Durchflussmessreihen
+    root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/AW_Durchflussmessreihen
     pattern: "*TagMittel.csv"
 
 # Output configuration
@@ -45,12 +45,12 @@ output:
 spatial:
   target_resolution: 250  # Output resolution in meters
   resampling_method: "bilinear"  # Method for resampling (nearest, bilinear, cubic)
-  region: WestGross
+  region: Suedtirol
 
 # Temporal parameters
 temporal:
   start_date: "1989-01-01"
-  end_date: "1989-12-31"
+  end_date: "1999-12-31"
   output_frequency: [monthly, annual]  # Options: daily, monthly, seasonal, annual
 
 # Processing options
