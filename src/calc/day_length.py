@@ -124,5 +124,5 @@ def get_lat_in_4326(da):
     if da.rio.crs is None:
         raise ValueError("The input DataArray does not have a CRS defined. Cannot transform coordinate values")
 
-    da_4326 = da.rename({'lat': 'y', 'lon': 'x'}).rio.reproject(4326, shape = da.shape, transform = da.rio.transform())
+    da_4326 = da.rename({'lat': 'y', 'lon': 'x'}).rio.reproject(4326, shape = da.shape)
     return da_4326.rename({'y': 'lat'}).lat
