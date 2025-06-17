@@ -3,10 +3,13 @@ import xarray as xr
 import pandas as pd
 
 from typing import Dict, Any
+import logging
 
 from ..config import DATETIME_FREQUENCY_MAPPING
 from .day_length import day_lengths, get_lat_in_4326
 from ..utils import get_season
+
+logger = logging.getLogger(__name__)
 
 def calculate_thornthwaite_pet(temperature: xr.DataArray, config: Dict[str, Any]) -> xr.DataArray:
     """Calculate potential evapotranspiration using the Thornthwaite method.
@@ -156,5 +159,7 @@ def adjust_pet_with_kc(pet: xr.DataArray,
         # Apply to the corresponding time slice of pet
         time_slice = pet.sel(time=time_val)
         et[i, :, :] = time_slice * seasonal_kc
+
+        logger.debug('Adjusted PET for time step %s and season %s', time_val, season)
     
     return et
