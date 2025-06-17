@@ -97,6 +97,7 @@ class Watersheds(BaseProcessor):
             
             # Aggregate data based on the specified method
             if method == 'sum':
+                #Sum means to calculate discharge
                 aggregated = masked_data.sum(dim=dim)
             elif method == 'mean':
                 aggregated = masked_data.mean(dim=dim)
@@ -105,6 +106,8 @@ class Watersheds(BaseProcessor):
             
             # Store the result for this watershed
             results[ws_name] = aggregated
+
+            logger.debug(f"Aggregated watershed {ws_name}")
         
         # Create DataFrame based on whether time dimension exists
         if has_time_dim:
