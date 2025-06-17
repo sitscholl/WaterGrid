@@ -117,12 +117,16 @@ class Watersheds(BaseProcessor):
             
             for ws_name, result in results.items():
                 # Extract values for each timestep
-                df_data[ws_name] = result.values
+                df_data[ws_name] = result
             
             # Create DataFrame with time as index and watersheds as columns
+            # Computes the data if chunked
             model_tbl = pd.DataFrame(df_data, index=time_values)
             model_tbl.index = model_tbl.index.set_names('time')
-            model_tbl = model_tbl.melt(ignore_index = False, value_name = 'modeled_values', var_name = 'Code')
+
+            model_tbl = model_tbl.melt(
+                ignore_index = False, value_name = 'modeled_values', var_name = 'Code'
+                )
             return model_tbl
         else:
             # For single timestep: create a DataFrame with watersheds as index
