@@ -1,0 +1,203 @@
+import xarray as xr
+import pandas as pd
+import numpy as np
+
+from .utils import construct_interstation_watersheds, get_measured_discharge_for_interstation_regions
+from ..validation import Watersheds
+
+class PrCorrection:
+    """
+    Precipitation correction class.
+    
+    This class provides methods to correct precipitation data using various factors
+    like station distance, wind effect, and validation data.
+    """
+
+    def __init__(self, config, station_distance_path=None, wind_effect_path=None):
+        """
+        Initialize the PrCorrection class.
+        
+        Parameters:
+        -----------
+        config : dict
+            Configuration dictionary
+        station_distance_path : str, optional
+            Path to the station distance raster
+        wind_effect_path : str, optional
+            Path to the wind effect raster
+            
+        Raises:
+        -------
+        ValueError
+            If station_distance_path is not provided and not in config
+        """
+        self.config = config
+        station_distance_path = config['input'].get('station_distance', {}).get('path')
+        wind_effect_path = config['input'].get('wind_effect', {}).get('path')
+
+        if station_distance_path is None:
+            raise ValueError("Station distance path must be provided in the configuration.")
+        station_distance =  xr.open_dataset(station_distance_path).band_data.squeeze(drop = True)
+
+        if wind_effect_path is not None:
+            wind_effect = xr.open_dataset(wind_effect_path).band_data.squeeze(drop=True)
+            wind_effect = wind_effect.rio.reproject_match(station_distance)
+
+            # Calculate distance raster
+            distance_raster = station_distance * wind_effect**4
+        else:
+            distance_raster = station_distance
+
+        # TODO: Align distance raster to landuse
+        self.distance_raster = distance_raster
+        self.correction_factors = None
+
+    def add_glaciers(self, glacier_data):
+        """
+        Add glacier data to the correction model.
+        
+        Parameters:
+        -----------
+        glacier_data : xr.DataArray
+            Glacier data to add to the model
+            
+        Note:
+        -----
+        This method is currently a placeholder for future implementation.
+        """
+        pass
+
+    def calculate_correction_factors(
+            self,
+            watersheds: Watersheds,
+            precipitation: xr.DataArray | xr.DataSet,
+            et: xr.DataArray | xr.DataSet,
+            validation_tbl: pd.DataFrame,
+            freq: str = 'ME'
+        ):
+        """
+        Calculate correction factors for precipitation based on water balance validation.
+        
+        Parameters:
+        -----------
+        watersheds : Watersheds
+            Watersheds object containing watershed masks
+        precipitation : xr.DataArray or xr.DataSet
+            Precipitation data
+        et : xr.DataArray or xr.DataSet
+            Evapotranspiration data
+        validation_tbl : pd.DataFrame
+            Validation table containing measured discharge values
+        freq : str, optional
+            Frequency for aggregation, by default 'ME' (month end)
+            
+        Returns:
+        --------
+        tuple
+            (precipitation_factor, precipitation_difference)
+        """
+        try:
+            interstation_regions = Watersheds(self.config, data=construct_interstation_watersheds(watersheds))
+            modeled_interstation_precipitation = interstation_regions.aggregate(precipitation)
+            modeled_interstation_evaporation = interstation_regions.aggregate(et)
+           
+            measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)
+
+            expected_interstation_precipitation = (measured_interstation_discharge + modeled_interstation_evaporation).dropna()
+            preci_factor = modeled_interstation_precipitation / expected_interstation_precipitation
+            preci_diff = ((expected_interstation_precipitation - modeled_interstation_precipitation) * (1000*365*24*60*60)) / 625  # mm/year
+
+            self.correction_factors = pd.DataFrame({
+                'preci_factor': preci_factor,
+                'preci_diff': preci_diff
+            })
+            
+            return preci_factor, preci_diff
+        except Exception as e:
+            raise ValueError(f"Error calculating correction factors: {str(e)}")
+
+    def initialize_correction_grids(self, watersheds, correction_factors=None, method='chelsa'):
+        """
+        Initialize correction grids based on watershed correction factors and distance raster.
+        
+        Parameters:
+        -----------
+        watersheds : Watersheds
+            Watersheds object containing watershed masks
+        correction_factors : pd.DataFrame, optional
+            DataFrame containing correction factors for each watershed.
+            If None, uses self.correction_factors
+        method : str, optional
+            Method to use for correction, by default 'chelsa'
+            
+        Returns:
+        --------
+        xr.DataArray
+            Correction raster
+            
+        Raises:
+        -------
+        ValueError
+            If correction_factors is None and self.correction_factors is None
+            If the difference between the correction amount and the sum of the correction raster is too high
+        """
+        if correction_factors is None:
+            if self.correction_factors is None:
+                raise ValueError("No correction factors available. Run calculate_correction_factors first.")
+            correction_factors = self.correction_factors
+        
+        corr_raster = []
+        for w_id in correction_factors.index:
+            
+            mask = np.isfinite(watersheds.get_mask(w_id))
+            corr_amount = correction_factors.loc[int(w_id), 'preci_diff']
+            
+            dist_mask = self.distance_raster.where(mask)
+
+            if (method == 'chelsa') and (corr_amount < 0):
+                dist_mask = dist_mask.max() - dist_mask
+                
+            dist_weights = dist_mask / dist_mask.sum()
+            corr_raster1 = dist_weights * corr_amount
+            
+            perc_diff = ((corr_amount - corr_raster1.sum().values) / corr_amount) * 100 if corr_amount != 0 else 0
+            
+            if abs(perc_diff) > 0.001:
+                raise ValueError(f'Difference too high! {perc_diff}%')
+
+            corr_raster.append(corr_raster1)
+            
+        corr_raster = xr.merge(corr_raster).band_data.fillna(0)
+        corr_raster = corr_raster.rio.write_nodata(0)
+        
+        return corr_raster
+        
+    def apply_correction(self, precipitation, correction_grid=None):
+        """
+        Apply correction to precipitation data.
+        
+        Parameters:
+        -----------
+        precipitation : xr.DataArray
+            Precipitation data to correct
+        correction_grid : xr.DataArray, optional
+            Correction grid to apply. If None, uses the result of initialize_correction_grids
+            
+        Returns:
+        --------
+        xr.DataArray
+            Corrected precipitation data
+        """
+        if correction_grid is None:
+            raise ValueError("Correction grid must be provided")
+            
+        # Ensure the correction grid matches the precipitation grid
+        correction_grid = correction_grid.rio.reproject_match(precipitation)
+        
+        # Apply the correction
+        corrected_precipitation = precipitation + correction_grid
+        
+        # Ensure no negative precipitation
+        corrected_precipitation = corrected_precipitation.clip(min=0)
+        
+        return corrected_precipitation
