@@ -103,6 +103,9 @@ class PrCorrection:
         try:
             interstation_regions = Watersheds(self.config, data=construct_interstation_watersheds(watersheds))
 
+            ##TODO: Include also Code into grouping? 
+            ##TODO: Fix transformation from m³/s to mm/year
+            ##TODO: Check get_area method if it gets correct resolution
             modeled_interstation_precipitation = interstation_regions.aggregate(precipitation)['modeled_values']
             modeled_interstation_precipitation = modeled_interstation_precipitation.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum() #mm/year
 
@@ -110,7 +113,7 @@ class PrCorrection:
             modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum()
            
             measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)['measured_values'] #in m³/s
-            measured_interstation_discharge *= (365*24*60*60 * 1000) / ws_area  # Convert from m³/s to mm/year
+            measured_interstation_discharge *= (365*24*60*60 * 1000) / interstation_regions.get_area()  # Convert from m³/s to mm/year
             measured_interstation_discharge = measured_interstation_discharge.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum()
 
             expected_interstation_precipitation = (
