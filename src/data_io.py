@@ -224,7 +224,7 @@ def load_static_data(config: Dict[str, Any], var_name: str, resampling_method = 
             shape=(height, width),
             bounds=target_bounds,
             resampling=method
-        )
+        ).rename({'x': 'lon', 'y': 'lat'})
 
     # Apply spatial filtering
     data = apply_spatial_filter(data, config)
