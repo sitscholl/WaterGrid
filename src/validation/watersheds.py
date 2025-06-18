@@ -86,6 +86,15 @@ class Watersheds(BaseProcessor):
     def get_mask(self, id: str) -> xr.DataArray | None:
         return self.data.get(id)
 
+    def get_area(self) -> pd.Series:
+
+        ws_areas = []
+        for ws_id in self.get_ids():
+            ws = self.get_mask(ws_id)
+            ws_areas.append(ws.rio.resolution()[0]**2 * (ws == 1).sum().item())
+
+        return pd.Series(ws_areas, index=pd.Index(self.get_ids(), name = 'Code'))
+
     def aggregate(self, data: xr.DataArray, method: str = 'sum', dim = ['lon', 'lat']) -> pd.DataFrame:
 
         if len(self.data) == 0:
