@@ -24,7 +24,7 @@ from src.data_io import (
     save_metadata
 )
 from src.calc.evapotranspiration import calculate_thornthwaite_pet, adjust_pet_with_kc
-from src.cluster import start_dask_cluster
+# from src.cluster import start_dask_cluster
 from src.utils import get_season
 from src.config import DATETIME_FREQUENCY_MAPPING
 
@@ -70,7 +70,6 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     # Calculate potential evapotranspiration using Thornthwaite method
     logger.info("Calculating potential evapotranspiration using Thornthwaite method")
     pet = calculate_thornthwaite_pet(temperature.data, config)
-    pet.isel(time = 6).rename({'lon': 'x', 'lat': 'y'}).rio.to_raster('pet_corr.tif')
     
     # Adjust PET using land-use specific crop coefficients
     logger.info("Adjusting potential evapotranspiration using crop coefficients")
@@ -80,10 +79,6 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     # Calculate water balance (P - ET)
     logger.info("Calculating water balance")
     water_balance = calculate_p_minus_et(precipitation.data, et)
-
-    # Compute chunks
-    # logger.info('Computing chunks...')
-    # water_balance = water_balance.compute()
 
     # Validation
     watersheds = Watersheds(config)
@@ -174,6 +169,9 @@ def save_results(water_balance: xr.DataArray, frequency: str,
     if not all([i in ['daily', 'monthly', 'seasonal', 'annual'] for i in frequency]):
         raise ValueError(f"Unsupported output frequency: {frequency}. Choose one of: ['daily', 'monthly', 'seasonal', 'annual']")
     
+    if not config['output'].get('save_grids', False):
+        return output_paths
+
     # Check if water_balance has a time dimension
     if "time" not in water_balance.dims:
         # If no time dimension, save as a single file
@@ -267,7 +265,7 @@ def save_results(water_balance: xr.DataArray, frequency: str,
                 wb_resampled = water_balance
             else:
                 # Resample to annual
-                wb_resampled = water_balance.resample(time="1Y").sum()
+                wb_resampled = water_balance.resample(time="1YE").sum()
             out_grids.append((wb_resampled, 'annual'))
         
         # Save each time step as a separate file
