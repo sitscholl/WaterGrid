@@ -12,7 +12,6 @@ input:
     units: "mm"  # Expected units
   landuse:
     path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/landuse_250m.tif"
-    crs: "EPSG:32632"
   kc_coefficients:
     path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/kc_values.xlsx"
     sheet_name: "marsoner"
@@ -22,6 +21,11 @@ input:
   stations:
     root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/AW_Durchflussmessreihen
     pattern: "*TagMittel.csv"
+  station_distance:
+    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/intermediate_results/distance_stations_slope.tif"
+  wind_effect:
+    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/intermediate_results/Wind Effect.tif"
+
 
 # Output configuration
 output:
@@ -45,13 +49,14 @@ output:
 # Spatial parameters
 spatial:
   target_resolution: 250  # Output resolution in meters
+  target_crs: "EPSG:32632"
   resampling_method: "bilinear"  # Method for resampling (nearest, bilinear, cubic)
   region: toell
 
 # Temporal parameters
 temporal:
-  start_date: "1980-01-01"
-  end_date: "2024-12-31"
+  start_date: "1999-10-01"
+  end_date: "2000-09-30"
   output_frequency: [monthly, annual]  # Options: daily, monthly, seasonal, annual
 
 # Processing options
