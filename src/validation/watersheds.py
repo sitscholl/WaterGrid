@@ -136,6 +136,7 @@ class Watersheds(BaseProcessor):
             model_tbl = model_tbl.melt(
                 ignore_index = False, value_name = 'modeled_values', var_name = 'Code'
                 )
+            model_tbl.set_index('Code', append = True, inplace = True)
             return model_tbl
         else:
             # For single timestep: create a DataFrame with watersheds as index
