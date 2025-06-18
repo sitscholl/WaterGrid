@@ -7,7 +7,7 @@ import os
 import logging
 
 from .base import BaseProcessor
-from ..data_io import apply_spatial_filter
+from ..data_io import apply_spatial_filter, load_static_data
 
 logger = logging.getLogger(__name__)
 
@@ -23,49 +23,9 @@ class Landuse(BaseProcessor):
     def load(self):
         """Load land-use data from GeoTIFF."""
 
-        landuse_config = self.config["input"]["landuse"]
-        landuse_path = landuse_config["path"]
-        target_res = self.config['spatial']['target_resolution']
+        landuse = load_static_data(self.config, var_name = 'landuse', resampling_method = 'nearest')
         
-        if not os.path.exists(landuse_path):
-            raise FileNotFoundError(f"Land-use data not found: {landuse_path}")
-        
-        # Load with rioxarray
-        landuse = rioxarray.open_rasterio(landuse_path).squeeze(drop = True)
-
-        if "x" in landuse.coords:
-            landuse = landuse.rename({"x": "lon"})
-        if "y" in landuse.coords:
-            landuse = landuse.rename({"y": "lat"})
-        landuse = landuse.rio.set_spatial_dims(x_dim = 'lon', y_dim = 'lat')
-
-        # lat_values = landuse.lat.values
-        # lat_ascending = lat_values[0] < lat_values[-1]
-        # if not lat_ascending:
-        #     landuse = landuse.reindex(lat=lat_values[::-1])
-        
-        # Check CRS
-        expected_crs = landuse_config.get("crs", "EPSG:32632")
-        if (landuse.rio.crs.to_string() != expected_crs) or (landuse.rio.resolution()[0] != target_res):
-            logger.info(f"Reprojecting land-use data to {expected_crs} and resolution {target_res} using Resampling.nearest")
-            
-            target_bounds = landuse.rio.bounds()
-            minx, miny, maxx, maxy = target_bounds
-            width = int((maxx - minx) / target_res)
-            height = int((maxy - miny) / target_res)
-            
-            # Resample to target grid
-            landuse = landuse.rio.reproject(
-                expected_crs,
-                shape=(height, width),
-                bounds=target_bounds,
-                resampling=Resampling.nearest
-            )
-
-        # Apply spatial filtering
-        landuse = apply_spatial_filter(landuse, self.config)
-        
-        logger.info(f"Loaded land-use data from {landuse_path}")
+        logger.info(f"Loaded land-use data from {self.config['input']['landuse']}")
         logger.debug(f"Land-use data shape: {landuse.shape}")
         logger.debug(f"Land-use data crs: {landuse.rio.crs}")
         logger.debug(f"Land-use data resolution: {landuse.rio.resolution()}")
