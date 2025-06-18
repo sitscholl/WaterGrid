@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, Union
 
 import numpy as np
-import pandas as pd
 import rioxarray
 import xarray as xr
 import yaml
@@ -66,8 +65,11 @@ def setup_output_directory(output_dir: str) -> Path:
     return output_path
 
 
-def apply_spatial_filter(data: Union[xr.Dataset, xr.DataArray, rioxarray.raster_array.RasterArray], 
-                     config: Dict[str, Any]) -> Union[xr.Dataset, xr.DataArray, rioxarray.raster_array.RasterArray]:
+def apply_spatial_filter(
+        data: Union[xr.Dataset, xr.DataArray, 
+        rioxarray.raster_array.RasterArray], 
+        config: Dict[str, Any]
+    ) -> Union[xr.Dataset, xr.DataArray, rioxarray.raster_array.RasterArray]:
     """Apply spatial filtering to a dataset or data array based on region configuration.
     
     Args:
@@ -166,6 +168,67 @@ def load_climate_data(config: Dict[str, Any], data_type: str) -> xr.Dataset:
     logger.debug(f"{data_type.capitalize()} data resolution: {ds[var_name].rio.resolution()}")
     
     return ds[var_name]
+
+def load_static_data(config: Dict[str, Any], var_name: str, resampling_method = 'nearest'):
+
+    data_config = config["input"].get(var_name)
+    if not data_config:
+        raise ValueError(f"Configuration for {var_name} not found.")
+
+    data_path = Path(data_config["path"])
+    if not data_path.exists():
+        raise ValueError(f'File does not exist: {data_path}')
+
+    target_res = config['spatial'].get('target_resolution', 250)
+    target_crs = config['spatial'].get("target_crs", "EPSG:32632")
+    
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"Data not found: {data_path}")
+    
+    # Load with rioxarray
+    data = rioxarray.open_rasterio(data_path).squeeze(drop = True)
+
+    if "x" in data.coords:
+        data = data.rename({"x": "lon"})
+    if "y" in data.coords:
+        data = data.rename({"y": "lat"})
+    data = data.rio.set_spatial_dims(x_dim = 'lon', y_dim = 'lat')
+
+    # lat_values = data.lat.values
+    # lat_ascending = lat_values[0] < lat_values[-1]
+    # if not lat_ascending:
+    #     data = data.reindex(lat=lat_values[::-1])
+    
+    # Check CRS
+    if (data.rio.crs.to_string() != target_crs) or (data.rio.resolution()[0] != target_res):
+        logger.info(f"Reprojecting data to {target_crs} and resolution {target_res} using {resampling_method} for resampling.")
+
+        RESAMPLING_MAPPING = {
+            'nearest': Resampling.nearest,
+            'bilinear': Resampling.bilinear,
+        }
+
+        if resampling_method not in RESAMPLING_MAPPING:
+            raise ValueError(f"Invalid resampling method provided. Use one of {list(RESAMPLING_MAPPING.keys())}")
+        method = RESAMPLING_MAPPING[resampling_method]
+
+        target_bounds = data.rio.bounds()
+        minx, miny, maxx, maxy = target_bounds
+        width = int((maxx - minx) / target_res)
+        height = int((maxy - miny) / target_res)
+        
+        # Resample to target grid
+        data = data.rio.reproject(
+            target_crs,
+            shape=(height, width),
+            bounds=target_bounds,
+            resampling=method
+        )
+
+    # Apply spatial filtering
+    data = apply_spatial_filter(data, config)
+
+    return data
 
 def save_water_balance(water_balance: xr.DataArray, config: Dict[str, Any], 
                       period: str, start_date: str, end_date: str) -> str:
