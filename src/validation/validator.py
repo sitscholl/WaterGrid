@@ -212,7 +212,6 @@ class Validator:
         
         # Aggregate watershed data
         modeled_data = watersheds.aggregate(balance_agg) #unit is in mm/year
-        modeled_data.set_index('Code', append = True, inplace = True)
         modeled_data.replace(0, np.nan, inplace=True) #years with less values than min_count have values of 0
 
         ## Transform from mm/year to m³/year 
