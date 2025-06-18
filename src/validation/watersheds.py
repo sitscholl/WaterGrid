@@ -14,11 +14,16 @@ logger = logging.getLogger(__name__)
 
 class Watersheds(BaseProcessor):
 
-    def __init__(self, config):
+    def __init__(self, config, data: dict | None = None):
         super().__init__(config)
 
         self.var_name = 'watersheds'
-        self.data = {}
+        if data is None:
+            self.data = {}
+        else:
+            if not isinstance(data, dict):
+                raise ValueError("Data must be a dictionary")
+            self.data = data
 
         watersheds_config = config['input'].get('watersheds')
         if watersheds_config is None:
@@ -74,6 +79,12 @@ class Watersheds(BaseProcessor):
                 ws_re = ws_re.astype(int)
             
             self.data[ws_file.stem] = ws_re
+
+    def get_ids(self) -> list | None:
+        return list(self.data.keys())
+
+    def get_mask(self, id: str) -> xr.DataArray | None:
+        return self.data.get(id)
 
     def aggregate(self, data: xr.DataArray, method: str = 'sum', dim = ['lon', 'lat']) -> pd.DataFrame:
 
