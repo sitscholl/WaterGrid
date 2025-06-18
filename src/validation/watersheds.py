@@ -107,8 +107,6 @@ class Watersheds(BaseProcessor):
             # Store the result for this watershed
             results[ws_name] = aggregated
 
-            logger.debug(f"Aggregated watershed {ws_name}")
-        
         # Create DataFrame based on whether time dimension exists
         if has_time_dim:
             # For multiple timesteps: create a DataFrame with time as index and watersheds as columns
@@ -117,10 +115,10 @@ class Watersheds(BaseProcessor):
             
             for ws_name, result in results.items():
                 # Extract values for each timestep
-                df_data[ws_name] = result
+                df_data[ws_name] = result.values
+                logger.debug(f"Aggregated watershed {ws_name}")
             
             # Create DataFrame with time as index and watersheds as columns
-            # Computes the data if chunked
             model_tbl = pd.DataFrame(df_data, index=time_values)
             model_tbl.index = model_tbl.index.set_names('time')
 
