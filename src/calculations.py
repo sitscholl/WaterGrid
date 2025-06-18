@@ -45,12 +45,10 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
 
     # Load input data
     temperature = Temperature(config)
-    temperature.load()
     # temperature.correct() #TODO: Improve this calculation as dask graph seems very inefficient
     temperature.to_geotiff()
 
     precipitation = Precipitation(config)
-    precipitation.load()
     precipitation.to_geotiff()
 
     landuse = Landuse(config)

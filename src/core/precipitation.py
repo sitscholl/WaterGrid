@@ -9,6 +9,7 @@ class Precipitation(BaseProcessor):
     def __init__(self, config):
         super().__init__(config)
         self.corrected = False
+        self.load(var_name = config['input']['precipitation']['variable'])
 
     def load(self, var_name: str = 'precipitation'):
         """Load precipitation data from zarr dataset."""
