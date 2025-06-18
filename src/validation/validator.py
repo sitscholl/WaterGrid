@@ -14,7 +14,7 @@ class Validator:
 
     def __init__(self, config):
         self.config = config
-        self.discharge_data = None
+        self.data = None  # Changed from self.discharge_data to self.data for consistency
         self.load()
 
     def load(self):
@@ -51,6 +51,7 @@ class Validator:
         
         if not tables:
             logger.warning("No valid data could be processed from any of the files")
+            self.data = None
         else:
             self.data = pd.concat(tables)
             logger.info(f"Loaded {len(tables)} tables into the validator.")
@@ -131,7 +132,8 @@ class Validator:
             pd.DataFrame: Data with handled missing values
         """
         # Count number of consecutive NaNs or non-NaNs
-        flow_column = 'Wert[m³/s]'  # Original column name before renaming
+        # Fixed: Use the correct column name based on whether it's been renamed yet
+        flow_column = 'Wert[m³/s]' if 'Wert[m³/s]' in data.columns else 'Abfluss'
         
         # Create a copy to avoid SettingWithCopyWarning
         result = data.copy()
@@ -151,7 +153,20 @@ class Validator:
         return result
 
     def aggregate(self, freq: str = 'YE-SEP', method = "mean", min_size: int = 365):
-
+        """
+        Aggregate the discharge data to the specified frequency.
+        
+        Args:
+            freq: Frequency string for resampling (default: 'YE-SEP' for hydrological year ending in September)
+            method: Aggregation method (default: "mean")
+            min_size: Minimum number of non-NaN values required for aggregation (default: 365)
+            
+        Returns:
+            pd.DataFrame: Aggregated discharge data
+            
+        Raises:
+            ValueError: If data has not been loaded
+        """
         if self.data is None:
             raise ValueError("Data has not been loaded. Please load data first before calculating discharge.")
 
@@ -165,18 +180,37 @@ class Validator:
 
         data_agg = data_agg.loc[data_agg['size'] >= min_size].drop('size', axis = 1).reset_index()
 
-        if method == np.sum:
+        # Convert from m³/s to m³/day if summing
+        if method == "sum" or method == np.sum:
             data_agg['measured_values'] = data_agg['measured_values'] * 86400
         # data_agg['Hyd_year'] = data_agg['time'].dt.year
 
         return data_agg.set_index(['Code', 'time'])
 
     def validate(self, watersheds, water_balance, freq: str = 'YE-SEP'):
+        """
+        Validate the water balance model against measured discharge data.
+        
+        Args:
+            watersheds: Watersheds object containing watershed data
+            water_balance: Water balance data (xarray.DataArray)
+            freq: Frequency string for resampling (default: 'YE-SEP' for hydrological year)
+            
+        Returns:
+            pd.DataFrame: Validation table with modeled and measured values
+            
+        Raises:
+            NotImplementedError: If frequency other than 'YE-SEP' is specified
+            ValueError: If rio accessor is not available
+        """
 
         if freq != 'YE-SEP':
-            raise NotImplementedError("Only 'YE-SEP' frequency is currently supported")
-
+            raise NotImplementedError("Only 'YE-SEP' frequency is currently supported.")
+            
+        # Aggregate water balance data to the specified frequency
         balance_agg = water_balance.resample(time = freq).sum(min_count = 12)
+        
+        # Aggregate watershed data
         modeled_data = watersheds.aggregate(balance_agg) #unit is in mm/year
         modeled_data.set_index('Code', append = True, inplace = True)
         modeled_data.replace(0, np.nan, inplace=True) #years with less values than min_count have values of 0
@@ -188,16 +222,33 @@ class Validator:
         modeled_discharge = modeled_data * (res**2) / 1000
 
         ## Transform from m³/year to m³/s
-        modeled_discharge /= (365 * 24 * 60 * 60)
+        seconds_per_year = 365.25 * 24 * 60 * 60  # More accurate seconds per year
+        modeled_discharge /= seconds_per_year
 
+        # Get measured discharge data
         measured_discharge = self.aggregate(freq = freq) #unit is in m³/s (average discharge per hydrological year)
 
-        validation_tbl = modeled_discharge.join(measured_discharge)
+        # Join modeled and measured data
+        validation_tbl = modeled_discharge.join(measured_discharge, how='outer')
+        
+        # Log warning for stations without matching data
+        missing_stations = validation_tbl[validation_tbl['measured_values'].isna()].index.get_level_values('Code').unique()
+        if len(missing_stations) > 0:
+            logger.warning(f"No measured data available for stations: {', '.join(missing_stations)}")
+            
+        missing_modeled = validation_tbl[validation_tbl['modeled_values'].isna()].index.get_level_values('Code').unique()
+        if len(missing_modeled) > 0:
+            logger.warning(f"No modeled data available for stations: {', '.join(missing_modeled)}")
         
         return validation_tbl
     
     def plot_timeseries(self, validation_tbl):
-
+        """
+        Plot time series of modeled and measured discharge for each station.
+        
+        Args:
+            validation_tbl: Validation table with modeled and measured values
+        """
         out_dir = Path(self.config['output'].get('directory', '.'), 'figures')
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -220,23 +271,34 @@ class Validator:
                 bbox_to_anchor=(.5, .93), ncol=2, title=None, frameon=False,
             )
             
-            #Add error metrics
-            ws_correlation = data['measured_values'].corr(data['modeled_values'])
-            ws_error = (data['modeled_values'] - data['measured_values']).mean()
-            
-            ax = g.axes[0][0]
-            label = f"p = {ws_correlation:.2f}\ne = {ws_error:.2f}%"
-            ax.annotate(text = label, xy = (.05, .85), xycoords = 'axes fraction')
+            # Add error metrics
+            # Only calculate metrics if both modeled and measured values exist
+            if not data['measured_values'].isna().all() and not data['modeled_values'].isna().all():
+                # Calculate correlation only on rows where both values exist
+                valid_data = data.dropna()
+                if len(valid_data) > 1:  # Need at least 2 points for correlation
+                    ws_correlation = valid_data['measured_values'].corr(valid_data['modeled_values'])
+                    
+                    # Calculate relative error as percentage
+                    relative_error = ((valid_data['modeled_values'] - valid_data['measured_values']) / 
+                                     valid_data['measured_values']).mean() * 100
+                    
+                    ax = g.axes[0][0]
+                    label = f"p = {ws_correlation:.2f}\ne = {relative_error:.2f}%"
+                    ax.annotate(text = label, xy = (.05, .85), xycoords = 'axes fraction')
+                else:
+                    logger.warning(f"Not enough valid data points for station {code} to calculate correlation.")
 
             plt.savefig(f'{out_dir}/{code}.png', dpi = 300, bbox_inches = 'tight')
             plt.close()
 
             logger.debug(f"Saved figure to {out_dir}/{code}.png")
+            
 
 
 if __name__ == "__main__":
     import yaml
-    from src.core import Landuse, Precipitation, Temperature
+    from src.core import Precipitation
     from src.validation.watersheds import Watersheds
 
     logger = logging.getLogger(__name__)
