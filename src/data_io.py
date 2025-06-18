@@ -92,21 +92,20 @@ def apply_spatial_filter(
     minx, miny, maxx, maxy = BOUNDING_BOXES[region_name]
     
     # Determine if latitude is in ascending or descending order
-    if 'lat' in data.coords:
-        lat_values = data.lat.values
-        if len(lat_values) > 1:
-            lat_ascending = lat_values[0] < lat_values[-1]
-            
-            # Select appropriate slice order based on latitude direction
-            if lat_ascending:
-                # For ascending latitude (min to max), use slice(miny, maxy)
-                data = data.sel(lon=slice(minx, maxx), lat=slice(miny, maxy))
-            else:
-                # For descending latitude (max to min), use slice(maxy, miny)
-                data = data.sel(lon=slice(minx, maxx), lat=slice(maxy, miny))
-        else:
-            # If there's only one latitude value, just use regular slice
+    lat_values = data.lat.values
+    if len(lat_values) > 1:
+        lat_ascending = lat_values[0] < lat_values[-1]
+        
+        # Select appropriate slice order based on latitude direction
+        if lat_ascending:
+            # For ascending latitude (min to max), use slice(miny, maxy)
             data = data.sel(lon=slice(minx, maxx), lat=slice(miny, maxy))
+        else:
+            # For descending latitude (max to min), use slice(maxy, miny)
+            data = data.sel(lon=slice(minx, maxx), lat=slice(maxy, miny))
+    else:
+        # If there's only one latitude value, just use regular slice
+        data = data.sel(lon=slice(minx, maxx), lat=slice(miny, maxy))
 
     if any([i == 0 for j, i in data.sizes.items()]):
         logger.warning("Data contains zero-sized dimensions after spatial filtering. Check bounds or data crs.")
@@ -187,6 +186,8 @@ def load_static_data(config: Dict[str, Any], var_name: str, resampling_method = 
     
     # Load with rioxarray
     data = rioxarray.open_rasterio(data_path).squeeze(drop = True)
+    data = data.where(data != data.attrs['_FillValue'])
+    data.attrs['_FillValue'] = np.nan
 
     if "x" in data.coords:
         data = data.rename({"x": "lon"})
