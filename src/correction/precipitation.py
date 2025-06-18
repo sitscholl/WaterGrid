@@ -2,8 +2,14 @@ import xarray as xr
 import pandas as pd
 import numpy as np
 
-from .utils import construct_interstation_watersheds, get_measured_discharge_for_interstation_regions
-from ..validation import Watersheds
+import logging
+
+from src.config import DATETIME_FREQUENCY_MAPPING
+from src.correction.utils import construct_interstation_watersheds, get_measured_discharge_for_interstation_regions
+from src.validation import Watersheds
+from src.data_io import load_static_data
+
+logger = logging.getLogger(__name__)
 
 class PrCorrection:
     """
@@ -32,19 +38,16 @@ class PrCorrection:
             If station_distance_path is not provided and not in config
         """
         self.config = config
-        station_distance_path = config['input'].get('station_distance', {}).get('path')
         wind_effect_path = config['input'].get('wind_effect', {}).get('path')
 
-        if station_distance_path is None:
-            raise ValueError("Station distance path must be provided in the configuration.")
-        station_distance =  xr.open_dataset(station_distance_path).band_data.squeeze(drop = True)
+        station_distance = load_static_data(config, 'station_distance')
 
         if wind_effect_path is not None:
-            wind_effect = xr.open_dataset(wind_effect_path).band_data.squeeze(drop=True)
-            wind_effect = wind_effect.rio.reproject_match(station_distance)
+            wind_effect = load_static_data(config, 'wind_effect')
+            wind_effect = wind_effect.rio.reproject_match(station_distance).rename({'x': 'lon', 'y': 'lat'})
 
             # Calculate distance raster
-            distance_raster = station_distance * wind_effect**4
+            distance_raster = station_distance * np.power(wind_effect, 4)
         else:
             distance_raster = station_distance
 
@@ -70,10 +73,10 @@ class PrCorrection:
     def calculate_correction_factors(
             self,
             watersheds: Watersheds,
-            precipitation: xr.DataArray | xr.DataSet,
-            et: xr.DataArray | xr.DataSet,
+            precipitation: xr.DataArray | xr.Dataset,
+            et: xr.DataArray | xr.Dataset,
             validation_tbl: pd.DataFrame,
-            freq: str = 'ME'
+            freq: str = 'YE-SEP'
         ):
         """
         Calculate correction factors for precipitation based on water balance validation.
@@ -96,16 +99,27 @@ class PrCorrection:
         tuple
             (precipitation_factor, precipitation_difference)
         """
+        #TODO: At the moment, correction factors are calculated fixed for hydrological year. Make this dynamic by allowing different frequencies
         try:
             interstation_regions = Watersheds(self.config, data=construct_interstation_watersheds(watersheds))
-            modeled_interstation_precipitation = interstation_regions.aggregate(precipitation)
-            modeled_interstation_evaporation = interstation_regions.aggregate(et)
-           
-            measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)
 
-            expected_interstation_precipitation = (measured_interstation_discharge + modeled_interstation_evaporation).dropna()
+            modeled_interstation_precipitation = interstation_regions.aggregate(precipitation)['modeled_values']
+            modeled_interstation_precipitation = modeled_interstation_precipitation.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum() #mm/year
+
+            modeled_interstation_evaporation = interstation_regions.aggregate(et)['modeled_values']
+            modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum()
+           
+            measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)['measured_values'] #in m³/s
+            measured_interstation_discharge *= (365*24*60*60 * 1000) / ws_area  # Convert from m³/s to mm/year
+            measured_interstation_discharge = measured_interstation_discharge.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum()
+
+            expected_interstation_precipitation = (
+                measured_interstation_discharge + modeled_interstation_evaporation
+                )
+            expected_interstation_precipitation.dropna(inplace = True)
+
             preci_factor = modeled_interstation_precipitation / expected_interstation_precipitation
-            preci_diff = ((expected_interstation_precipitation - modeled_interstation_precipitation) * (1000*365*24*60*60)) / 625  # mm/year
+            preci_diff = expected_interstation_precipitation - modeled_interstation_precipitation #* (1000*365*24*60*60)) / 625  # mm/year
 
             self.correction_factors = pd.DataFrame({
                 'preci_factor': preci_factor,
@@ -124,7 +138,7 @@ class PrCorrection:
         -----------
         watersheds : Watersheds
             Watersheds object containing watershed masks
-        correction_factors : pd.DataFrame, optional
+            correction_factors : pd.DataFrame, optional
             DataFrame containing correction factors for each watershed.
             If None, uses self.correction_factors
         method : str, optional
@@ -201,3 +215,33 @@ class PrCorrection:
         corrected_precipitation = corrected_precipitation.clip(min=0)
         
         return corrected_precipitation
+
+if __name__ == "__main__":
+    import yaml
+    from src.core import Precipitation, Temperature
+    from src.validation import Validator
+    from src.validation.watersheds import Watersheds
+    from src.calc.evapotranspiration import calculate_thornthwaite_pet
+    from src.calculations import calculate_p_minus_et
+
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=logging.DEBUG)
+
+    with open("config.yaml", "r", encoding = 'utf-8') as f:
+        config = yaml.safe_load(f)
+
+    precipitation = Precipitation(config)
+    temperature = Temperature(config)
+    pet = calculate_thornthwaite_pet(temperature.data, config)
+    water_balance = calculate_p_minus_et(precipitation.data, pet)
+
+    watersheds = Watersheds(config)
+    watersheds.load(precipitation.data.isel(time = 0))
+
+    validator = Validator(config)
+    validation_tbl = validator.validate(watersheds, precipitation.data)
+    
+    pr_correction = PrCorrection(config)
+    correction_factors = pr_correction.calculate_correction_factors(
+        watersheds, precipitation.data, pet, validation_tbl
+        )
