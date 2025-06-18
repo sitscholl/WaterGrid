@@ -14,7 +14,7 @@ class Temperature(BaseProcessor):
     def __init__(self, config):
         super().__init__(config)
         self.corrected = False
-        self.load(var_name = self.load(var_name = config['input']['temperature']['variable']))
+        self.load(var_name = config['input']['temperature']['variable'])
 
     def load(self, var_name: str = 'temperature'):
         """Load temperature data from zarr dataset. """
