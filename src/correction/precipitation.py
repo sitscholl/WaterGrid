@@ -282,6 +282,7 @@ if __name__ == "__main__":
     interstation_regions = Watersheds(config, data=construct_interstation_watersheds(watersheds))
 
     validator = Validator(config)
+    #Use precipitation here, because we want to compare summed modeled precipitation with expected precipitation from discharge stations
     validation_tbl = validator.validate(interstation_regions, precipitation.data, compute_for_interstation_regions=True)
     #validator.plot_timeseries(validation_tbl)
 
@@ -292,6 +293,7 @@ if __name__ == "__main__":
     corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
     pr_corr = pr_correction.apply_correction(precipitation.data, corr_raster)
 
+    ##TODO: Change fixed frequency here and allow dynamic frequency
     pet_yearly = pet.resample(time='YE-SEP').sum()
     wb_corr = calculate_p_minus_et(pr_corr, pet_yearly)
 
