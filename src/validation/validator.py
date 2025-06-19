@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import xarray as xr
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -212,7 +213,11 @@ class Validator:
             raise NotImplementedError("Only 'YE-SEP' frequency is currently supported.")
             
         # Aggregate water balance data to the specified frequency
-        balance_agg = water_balance.resample(time = freq).sum(min_count = 12)
+        if len(water_balance.time) > 2 and xr.infer_freq(water_balance.time) != freq:
+            balance_agg = water_balance.resample(time = freq).sum(min_count = 12)
+        else:
+            #Assume correct frequency
+            balance_agg = water_balance
         
         # Aggregate watershed data
         modeled_data = watersheds.aggregate(balance_agg) #unit is in mm/year
