@@ -66,8 +66,15 @@ def resample_to_target_grid(source: xr.DataArray, target: xr.DataArray, method: 
         )
                 
     # Use xarray's interp which preserves chunking
-    resampled = source.interp_like(target, method = resampling_methods[method])
-    
+    resampled = source.interp_like(target, method=resampling_methods[method])
+
+    # Copy the spatial metadata from the target to the resampled array
+    # This ensures the rio accessor has the correct resolution information
+    resampled = resampled.rio.write_crs(target.rio.crs)
+
+    # Copy the transform from the target to ensure correct resolution metadata
+    resampled = resampled.rio.write_transform(target.rio.transform())
+
     return resampled
 
 
