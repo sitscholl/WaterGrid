@@ -17,14 +17,14 @@ input:
     sheet_name: "marsoner"
   watersheds:
     root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/watersheds_validation #C:/OneDrive/Scientific Network South Tyrol/Wasserbilanz Südtirol - General/8_drought_indicators_water_group/sample_points/watersheds/raster
-    pattern: "198*.tif"
+    pattern: "*.tif"
   stations:
     root: C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/AW_Durchflussmessreihen
     pattern: "*TagMittel.csv"
   station_distance:
-    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/intermediate_results/distance_stations_slope.tif"
+    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/distance_stations_slope.tif"
   wind_effect:
-    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/intermediate_results/Wind Effect.tif"
+    path: "C:/Users/tscho/OneDrive - Scientific Network South Tyrol/Projekte/Wasserbilanz Südtirol - v2/data/Wind Effect.tif"
 
 
 # Output configuration
@@ -51,12 +51,12 @@ spatial:
   target_resolution: 250  # Output resolution in meters
   target_crs: "EPSG:32632"
   resampling_method: "bilinear"  # Method for resampling (nearest, bilinear, cubic)
-  region: toell
+  region: branzoll
 
 # Temporal parameters
 temporal:
   start_date: "1999-10-01"
-  end_date: "2000-09-30"
+  end_date: "2005-09-30"
   output_frequency: [monthly, annual]  # Options: daily, monthly, seasonal, annual
 
 # Processing options
