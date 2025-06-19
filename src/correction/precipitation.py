@@ -199,7 +199,7 @@ class PrCorrection:
 
         return corr_raster.transpose('time', 'lat', 'lon')
         
-    def apply_correction(self, precipitation, correction_grid=None):
+    def apply_correction(self, precipitation, correction_grid):
         """
         Apply correction to precipitation data.
         
@@ -214,12 +214,14 @@ class PrCorrection:
         --------
         xr.DataArray
             Corrected precipitation data
-        """
-        if correction_grid is None:
-            raise ValueError("Correction grid must be provided")
-            
+        """   
+
+        if xr.infer_freq(precipitation.time) != "YE-SEP":
+            precipitation = precipitation.resample(time = 'YE-SEP').sum()
+
         # Ensure the correction grid matches the precipitation grid
         correction_grid = correction_grid.rio.reproject_match(precipitation)
+        correction_grid = correction_grid.rename({'x': 'lon', 'y': 'lat'})
         
         # Apply the correction
         corrected_precipitation = precipitation + correction_grid
@@ -261,4 +263,5 @@ if __name__ == "__main__":
         interstation_regions, precipitation.data, pet, validation_tbl
         )
     corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
+    pr_corr = pr_correction.apply_correction(precipitation.data, corr_raster)
     
