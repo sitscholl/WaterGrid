@@ -135,7 +135,7 @@ class PrCorrection:
     def initialize_correction_grids(self, watersheds, correction_factors):
         """
         Initialize correction grids based on watershed correction factors and distance raster.
-        
+
         Parameters:
         -----------
         watersheds : Watersheds
@@ -145,44 +145,52 @@ class PrCorrection:
             If None, uses self.correction_factors
         method : str, optional
             Method to use for correction, by default 'chelsa'
-            
+
         Returns:
         --------
         xr.DataArray
             Correction raster
-            
+
         Raises:
         -------
         ValueError
             If the difference between the correction amount and the sum of the correction raster is too high
         """
 
-        corr_raster = []
+        # Initialize an empty DataArray with the same dimensions as the distance raster
+        # to store the combined correction grid
+        corr_raster = None
         for ts, w_id in correction_factors.index:
-            
+
             ws = watersheds.get_mask(w_id)
             mask = ws != ws.attrs.get('_FillValue', -999)
             corr_amount = correction_factors.xs(w_id, level = 'Code')['preci_diff'].item()
-            
+
             dist_raster = resample_to_target_grid(self.distance_raster, ws)
             dist_mask = dist_raster.where(mask)
-            
+
             dist_weights = dist_mask / dist_mask.sum()
             _corr_raster = dist_weights * corr_amount
             _corr_raster.name = 'Correction Grid'
             _corr_raster = _corr_raster.assign_coords(time = ts)
-            
+
             perc_diff = ((corr_amount - _corr_raster.sum().values) / corr_amount) * 100 if corr_amount != 0 else 0
-            
+
             if abs(perc_diff) > 0.001:
                 raise ValueError(f'Difference too high! {perc_diff}%')
 
-            corr_raster.append(_corr_raster)
+            # Initialize the template grid
+            if corr_raster is None:
+                corr_raster = xr.zeros_like(_corr_raster)
+                corr_raster = corr_raster.expand_dims(time = np.unique(correction_factors.index.get_level_values('time')))
+                corr_raster = corr_raster.rio.write_crs(_corr_raster.rio.crs)
+                #corr_raster = corr_raster.transpose('time', 'lat', 'lon')
+
+            _corr_raster.rio.to_raster(f"{w_id}.tif")
+            corr_raster = xr.where(~_corr_raster.isnull(), _corr_raster, corr_raster, keep_attrs = True)
+
             logger.debug(f"Calculated correction grid for time {ts} and watershed {w_id}")
-            
-        corr_raster = xr.merge(corr_raster, compat = 'override')['Correction Grid'].fillna(0)
-        corr_raster = corr_raster.rio.write_nodata(0)
-        
+
         return corr_raster
         
     def apply_correction(self, precipitation, correction_grid=None):
