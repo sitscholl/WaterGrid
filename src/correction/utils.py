@@ -57,9 +57,6 @@ def get_measured_discharge_for_interstation_regions(validation_tbl):
         If required columns are missing from validation_tbl
     """
         
-    if 'measured_values' not in validation_tbl.columns or 'modeled_values' not in validation_tbl.columns:
-        raise ValueError(f"Columns 'measured_values' and 'modeled_values' are required. Got {validation_tbl.columns}")
-
     if validation_tbl.index.names != ['time', 'Code']:
         raise ValueError("Index must have 'time' and 'Code' as names.")
 
