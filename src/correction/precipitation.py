@@ -157,6 +157,9 @@ class PrCorrection:
             If the difference between the correction amount and the sum of the correction raster is too high
         """
 
+        if correction_factors.index.names != ['time', 'Code']:
+            raise ValueError(f"Index names of correction_factors must be ['time', 'Code']. Got {correction_factors.index.names}")
+
         # Initialize an empty DataArray with the same dimensions as the distance raster
         # to store the combined correction grid
         corr_raster = None
@@ -164,7 +167,7 @@ class PrCorrection:
 
             ws = watersheds.get_mask(w_id)
             mask = ws != ws.attrs.get('_FillValue', -999)
-            corr_amount = correction_factors.xs(w_id, level = 'Code')['preci_diff'].item()
+            corr_amount = correction_factors.xs((ts, w_id))['preci_diff'].item()
 
             dist_raster = resample_to_target_grid(self.distance_raster, ws)
             dist_mask = dist_raster.where(mask)
@@ -184,14 +187,17 @@ class PrCorrection:
                 corr_raster = xr.zeros_like(_corr_raster)
                 corr_raster = corr_raster.expand_dims(time = np.unique(correction_factors.index.get_level_values('time')))
                 corr_raster = corr_raster.rio.write_crs(_corr_raster.rio.crs)
-                #corr_raster = corr_raster.transpose('time', 'lat', 'lon')
 
-            _corr_raster.rio.to_raster(f"{w_id}.tif")
-            corr_raster = xr.where(~_corr_raster.isnull(), _corr_raster, corr_raster, keep_attrs = True)
+            corr_raster.loc[dict(time = ts)] = xr.where(
+                _corr_raster.isnull(), 
+                corr_raster.sel(time = ts), 
+                _corr_raster, 
+                keep_attrs = True
+            )
 
             logger.debug(f"Calculated correction grid for time {ts} and watershed {w_id}")
 
-        return corr_raster
+        return corr_raster.transpose('time', 'lat', 'lon')
         
     def apply_correction(self, precipitation, correction_grid=None):
         """
@@ -254,5 +260,5 @@ if __name__ == "__main__":
     correction_factors = pr_correction.calculate_correction_factors(
         interstation_regions, precipitation.data, pet, validation_tbl
         )
-    pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
+    corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
     
