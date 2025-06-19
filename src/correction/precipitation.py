@@ -8,6 +8,7 @@ from src.config import DATETIME_FREQUENCY_MAPPING
 from src.correction.utils import construct_interstation_watersheds, get_measured_discharge_for_interstation_regions
 from src.validation import Watersheds
 from src.data_io import load_static_data
+from src.resampling import resample_to_target_grid
 
 logger = logging.getLogger(__name__)
 
@@ -155,26 +156,31 @@ class PrCorrection:
         ValueError
             If the difference between the correction amount and the sum of the correction raster is too high
         """
-        
+
         corr_raster = []
-        for w_id in correction_factors.index:
+        for ts, w_id in correction_factors.index:
             
-            mask = np.isfinite(watersheds.get_mask(w_id))
-            corr_amount = correction_factors.loc[int(w_id), 'preci_diff']
+            ws = watersheds.get_mask(w_id)
+            mask = ws != ws.attrs.get('_FillValue', -999)
+            corr_amount = correction_factors.xs(w_id, level = 'Code')['preci_diff'].item()
             
-            dist_mask = self.distance_raster.where(mask)
-                
+            dist_raster = resample_to_target_grid(self.distance_raster, ws)
+            dist_mask = dist_raster.where(mask)
+            
             dist_weights = dist_mask / dist_mask.sum()
-            corr_raster1 = dist_weights * corr_amount
+            _corr_raster = dist_weights * corr_amount
+            _corr_raster.name = 'Correction Grid'
+            _corr_raster = _corr_raster.assign_coords(time = ts)
             
-            perc_diff = ((corr_amount - corr_raster1.sum().values) / corr_amount) * 100 if corr_amount != 0 else 0
+            perc_diff = ((corr_amount - _corr_raster.sum().values) / corr_amount) * 100 if corr_amount != 0 else 0
             
             if abs(perc_diff) > 0.001:
                 raise ValueError(f'Difference too high! {perc_diff}%')
 
-            corr_raster.append(corr_raster1)
+            corr_raster.append(_corr_raster)
+            logger.debug(f"Calculated correction grid for time {ts} and watershed {w_id}")
             
-        corr_raster = xr.merge(corr_raster).band_data.fillna(0)
+        corr_raster = xr.merge(corr_raster, compat = 'override')['Correction Grid'].fillna(0)
         corr_raster = corr_raster.rio.write_nodata(0)
         
         return corr_raster
@@ -234,8 +240,11 @@ if __name__ == "__main__":
 
     validator = Validator(config)
     validation_tbl = validator.validate(interstation_regions, precipitation.data, compute_for_interstation_regions=True)
-    
+    #validator.plot_timeseries(validation_tbl)
+
     pr_correction = PrCorrection(config)
     correction_factors = pr_correction.calculate_correction_factors(
         interstation_regions, precipitation.data, pet, validation_tbl
         )
+    pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
+    
