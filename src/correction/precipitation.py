@@ -102,19 +102,17 @@ class PrCorrection:
         #TODO: At the moment, correction factors are calculated fixed for hydrological year. Make this dynamic by allowing different frequencies
         try:
             interstation_regions = Watersheds(self.config, data=construct_interstation_watersheds(watersheds))
+            grouper = [pd.Grouper(freq='YE-SEP', level='time'), pd.Grouper(level = 'Code')]
 
-            ##TODO: Include also Code into grouping? 
-            ##TODO: Fix transformation from m³/s to mm/year
-            ##TODO: Check get_area method if it gets correct resolution
             modeled_interstation_precipitation = interstation_regions.aggregate(precipitation)['modeled_values']
-            modeled_interstation_precipitation = modeled_interstation_precipitation.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum() #mm/year
+            modeled_interstation_precipitation = modeled_interstation_precipitation.groupby(grouper).sum() #mm/year over entire watershed
 
-            modeled_interstation_evaporation = interstation_regions.aggregate(et)['modeled_values']
-            modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum()
+            modeled_interstation_evaporation = interstation_regions.aggregate(et)['modeled_values'] 
+            modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(grouper).sum() #mm/year over entire watershed
            
             measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)['measured_values'] #in m³/s
-            measured_interstation_discharge *= (365*24*60*60 * 1000) / interstation_regions.get_area()  # Convert from m³/s to mm/year
-            measured_interstation_discharge = measured_interstation_discharge.groupby(pd.Grouper(freq='YE-SEP', level='time')).sum()
+            measured_interstation_discharge *= (365*24*60*60 * 1000) #/ interstation_regions.get_area()) # Convert from m³/s to mm/year. Do not divide with watershed area as we need value over entire watershed and not per unit area
+            measured_interstation_discharge = measured_interstation_discharge.groupby(grouper).sum()
 
             expected_interstation_precipitation = (
                 measured_interstation_discharge + modeled_interstation_evaporation
