@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from src.cluster import start_dask_cluster
+from ..correction.utils import get_measured_discharge_for_interstation_regions
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ class Validator:
         
         return result
 
-    def aggregate(self, freq: str = 'YE-SEP', method = "mean", min_size: int = 365):
+    def aggregate(self, freq: str = 'YE-SEP', method = "mean", min_size: int = 365, compute_for_interstation_regions = False):
         """
         Aggregate the discharge data to the specified frequency.
         
@@ -183,11 +184,14 @@ class Validator:
         # Convert from m³/s to m³/day if summing
         if method == "sum" or method == np.sum:
             data_agg['measured_values'] = data_agg['measured_values'] * 86400
-        # data_agg['Hyd_year'] = data_agg['time'].dt.year
+        data_agg.set_index(['time', 'Code'], inplace = True)
 
-        return data_agg.set_index(['Code', 'time'])
+        if compute_for_interstation_regions:
+            data_agg = get_measured_discharge_for_interstation_regions(data_agg)
 
-    def validate(self, watersheds, water_balance, freq: str = 'YE-SEP'):
+        return data_agg
+
+    def validate(self, watersheds, water_balance, freq: str = 'YE-SEP', compute_for_interstation_regions = False):
         """
         Validate the water balance model against measured discharge data.
         
@@ -225,19 +229,19 @@ class Validator:
         modeled_discharge /= seconds_per_year
 
         # Get measured discharge data
-        measured_discharge = self.aggregate(freq = freq) #unit is in m³/s (average discharge per hydrological year)
+        measured_discharge = self.aggregate(freq = freq, compute_for_interstation_regions = compute_for_interstation_regions) #unit is in m³/s (average discharge per hydrological year)
 
         # Join modeled and measured data
         validation_tbl = modeled_discharge.join(measured_discharge, how='outer')
         
         # Log warning for stations without matching data
-        missing_stations = validation_tbl[validation_tbl['measured_values'].isna()].index.get_level_values('Code').unique()
-        if len(missing_stations) > 0:
-            logger.warning(f"No measured data available for stations: {', '.join(missing_stations)}")
+        # missing_stations = validation_tbl[validation_tbl['measured_values'].isna()].index.get_level_values('Code').unique()
+        # if len(missing_stations) > 0:
+        #     logger.warning(f"No measured data available for stations: {', '.join(missing_stations)}")
             
-        missing_modeled = validation_tbl[validation_tbl['modeled_values'].isna()].index.get_level_values('Code').unique()
-        if len(missing_modeled) > 0:
-            logger.warning(f"No modeled data available for stations: {', '.join(missing_modeled)}")
+        # missing_modeled = validation_tbl[validation_tbl['modeled_values'].isna()].index.get_level_values('Code').unique()
+        # if len(missing_modeled) > 0:
+        #     logger.warning(f"No modeled data available for stations: {', '.join(missing_modeled)}")
         
         return validation_tbl
     
