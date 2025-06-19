@@ -264,4 +264,10 @@ if __name__ == "__main__":
         )
     corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
     pr_corr = pr_correction.apply_correction(precipitation.data, corr_raster)
-    
+
+    pet_yearly = pet.resample(time='YE-SEP').sum()
+    wb_corr = calculate_p_minus_et(pr_corr, pet_yearly)
+
+    validation_tbl_after_correction = validator.validate(watersheds, wb_corr)
+    validator.plot_timeseries(validation_tbl_after_correction)
+  
