@@ -106,11 +106,11 @@ class Watersheds(BaseProcessor):
         # Dictionary to store results for each watershed
         results = {}
         
-        for ws_name, ws_data in self.data.items():
-            # Create a proper boolean mask where valid watershed values exist
-            fill_value = ws_data.attrs.get('_FillValue', None)
+        for ws_id in self.get_ids():
+
             # Create a boolean mask (True where watershed data is valid, False elsewhere)
-            ws_mask = ws_data != fill_value
+            ws_mask = self.get_mask(ws_id)
+            ws_mask = ws_mask != ws_mask.attrs.get('_FillValue', -999)
             
             # Apply the mask to the data
             masked_data = data.where(ws_mask)
@@ -125,7 +125,7 @@ class Watersheds(BaseProcessor):
                 raise ValueError(f"Unsupported aggregation method: {method}")
             
             # Store the result for this watershed
-            results[ws_name] = aggregated
+            results[ws_id] = aggregated
 
         # Create DataFrame based on whether time dimension exists
         if has_time_dim:
