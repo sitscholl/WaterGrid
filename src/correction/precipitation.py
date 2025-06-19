@@ -103,15 +103,16 @@ class PrCorrection:
         try:
             interstation_regions = Watersheds(self.config, data=construct_interstation_watersheds(watersheds))
             grouper = [pd.Grouper(freq='YE-SEP', level='time'), pd.Grouper(level = 'Code')]
+            target_res = self.config['spatial']['target_resolution']
 
             modeled_interstation_precipitation = interstation_regions.aggregate(precipitation)['modeled_values']
             modeled_interstation_precipitation = modeled_interstation_precipitation.groupby(grouper).sum() #mm/year over entire watershed
 
             modeled_interstation_evaporation = interstation_regions.aggregate(et)['modeled_values'] 
             modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(grouper).sum() #mm/year over entire watershed
-           
+
             measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)['measured_values'] #in m³/s
-            measured_interstation_discharge *= (365*24*60*60 * 1000) #/ interstation_regions.get_area()) # Convert from m³/s to mm/year. Do not divide with watershed area as we need value over entire watershed and not per unit area
+            measured_interstation_discharge *= (365*24*60*60 * 1000) / target_res**2 # Convert from m³/s to mm/year over watershed.
             measured_interstation_discharge = measured_interstation_discharge.groupby(grouper).sum()
 
             expected_interstation_precipitation = (
@@ -120,7 +121,7 @@ class PrCorrection:
             expected_interstation_precipitation.dropna(inplace = True)
 
             preci_factor = modeled_interstation_precipitation / expected_interstation_precipitation
-            preci_diff = expected_interstation_precipitation - modeled_interstation_precipitation #* (1000*365*24*60*60)) / 625  # mm/year
+            preci_diff = expected_interstation_precipitation - modeled_interstation_precipitation #* (1000*365*24*60*60)) / target_res**2  # mm/year
 
             self.correction_factors = pd.DataFrame({
                 'preci_factor': preci_factor,
