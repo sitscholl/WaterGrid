@@ -75,8 +75,7 @@ class PrCorrection:
             watersheds: Watersheds,
             precipitation: xr.DataArray | xr.Dataset,
             et: xr.DataArray | xr.Dataset,
-            validation_tbl: pd.DataFrame,
-            freq: str = 'YE-SEP'
+            validation_tbl: pd.DataFrame
         ):
         """
         Calculate correction factors for precipitation based on water balance validation.
@@ -101,18 +100,18 @@ class PrCorrection:
         """
         #TODO: At the moment, correction factors are calculated fixed for hydrological year. Make this dynamic by allowing different frequencies
         try:
-            interstation_regions = Watersheds(self.config, data=construct_interstation_watersheds(watersheds))
+            
             grouper = [pd.Grouper(freq='YE-SEP', level='time'), pd.Grouper(level = 'Code')]
             target_res = self.config['spatial']['target_resolution']
 
-            modeled_interstation_precipitation = interstation_regions.aggregate(precipitation)['modeled_values']
+            modeled_interstation_precipitation = watersheds.aggregate(precipitation)['modeled_values']
             modeled_interstation_precipitation = modeled_interstation_precipitation.groupby(grouper).sum() #mm/year over entire watershed
 
-            modeled_interstation_evaporation = interstation_regions.aggregate(et)['modeled_values'] 
+            modeled_interstation_evaporation = watersheds.aggregate(et)['modeled_values'] 
             modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(grouper).sum() #mm/year over entire watershed
 
-            measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)['measured_values'] #in m³/s
-            measured_interstation_discharge *= (365*24*60*60 * 1000) / target_res**2 # Convert from m³/s to mm/year over watershed.
+            #measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)['measured_values'] #in m³/s
+            measured_interstation_discharge = (validation_tbl['measured_values'] * (365*24*60*60 * 1000)) / target_res**2 # Convert from m³/s to mm/year over watershed.
             measured_interstation_discharge = measured_interstation_discharge.groupby(grouper).sum()
 
             expected_interstation_precipitation = (
@@ -123,16 +122,16 @@ class PrCorrection:
             preci_factor = modeled_interstation_precipitation / expected_interstation_precipitation
             preci_diff = expected_interstation_precipitation - modeled_interstation_precipitation #* (1000*365*24*60*60)) / target_res**2  # mm/year
 
-            self.correction_factors = pd.DataFrame({
+            correction_factors = pd.DataFrame({
                 'preci_factor': preci_factor,
                 'preci_diff': preci_diff
             })
             
-            return preci_factor, preci_diff
+            return correction_factors
         except Exception as e:
             raise ValueError(f"Error calculating correction factors: {str(e)}")
 
-    def initialize_correction_grids(self, watersheds, correction_factors=None, method='chelsa'):
+    def initialize_correction_grids(self, watersheds, correction_factors):
         """
         Initialize correction grids based on watershed correction factors and distance raster.
         
@@ -154,13 +153,8 @@ class PrCorrection:
         Raises:
         -------
         ValueError
-            If correction_factors is None and self.correction_factors is None
             If the difference between the correction amount and the sum of the correction raster is too high
         """
-        if correction_factors is None:
-            if self.correction_factors is None:
-                raise ValueError("No correction factors available. Run calculate_correction_factors first.")
-            correction_factors = self.correction_factors
         
         corr_raster = []
         for w_id in correction_factors.index:
@@ -169,9 +163,6 @@ class PrCorrection:
             corr_amount = correction_factors.loc[int(w_id), 'preci_diff']
             
             dist_mask = self.distance_raster.where(mask)
-
-            if (method == 'chelsa') and (corr_amount < 0):
-                dist_mask = dist_mask.max() - dist_mask
                 
             dist_weights = dist_mask / dist_mask.sum()
             corr_raster1 = dist_weights * corr_amount
@@ -239,11 +230,12 @@ if __name__ == "__main__":
 
     watersheds = Watersheds(config)
     watersheds.load(precipitation.data.isel(time = 0))
+    interstation_regions = Watersheds(config, data=construct_interstation_watersheds(watersheds))
 
     validator = Validator(config)
-    validation_tbl = validator.validate(watersheds, precipitation.data)
+    validation_tbl = validator.validate(interstation_regions, precipitation.data, compute_for_interstation_regions=True)
     
     pr_correction = PrCorrection(config)
     correction_factors = pr_correction.calculate_correction_factors(
-        watersheds, precipitation.data, pet, validation_tbl
+        interstation_regions, precipitation.data, pet, validation_tbl
         )
