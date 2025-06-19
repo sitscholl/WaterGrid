@@ -3,6 +3,7 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.dates as mdates
 
 import logging
 from pathlib import Path
@@ -253,7 +254,7 @@ class Validator:
     def plot_timeseries(self, validation_tbl):
         """
         Plot time series of modeled and measured discharge for each station.
-        
+
         Args:
             validation_tbl: Validation table with modeled and measured values
         """
@@ -267,40 +268,89 @@ class Validator:
             if plot_data['value'].isna().all():
                 logger.warning(f"No validation data available for station {code}. Skipping plot generation.")
                 continue
-            
-            g = sns.relplot(data = plot_data, x = 'time', y = 'value', hue = 'variable', kind = 'line', height = 2)
-            g.set_titles('{col_name}')
-            g.set_ylabels('Abfluss [m³/s]')
-            g.set_xlabels('Hydrologisches Jahr')
 
-            plt.tight_layout()
-            sns.move_legend(
-                g, "lower center",
-                bbox_to_anchor=(.5, .93), ncol=2, title=None, frameon=False,
-            )
-            
-            # Add error metrics
-            # Only calculate metrics if both modeled and measured values exist
+            # Create figure with appropriate size
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+            # Plot data with better colors and styling
+            measured = plot_data[plot_data['variable'] == 'measured_values']
+            modeled = plot_data[plot_data['variable'] == 'modeled_values']
+
+            # Plot measured data
+            ax.plot(measured['time'], measured['value'],
+                   color='#1f77b4', label='Measured', marker='o',
+                   markersize=4, alpha=0.8)
+
+            # Plot modeled data
+            ax.plot(modeled['time'], modeled['value'],
+                   color='#ff7f0e', label='Modeled', marker='s',
+                   markersize=4, alpha=0.8, linestyle='--')
+
+            # Add shaded area to highlight differences
+            if not measured.empty and not modeled.empty:
+                # Create a common time index
+                common_times = pd.merge(measured, modeled, on='time', how='inner')['time']
+                if not common_times.empty:
+                    measured_values = measured[measured['time'].isin(common_times)].set_index('time')['value']
+                    modeled_values = modeled[modeled['time'].isin(common_times)].set_index('time')['value']
+
+                    # Sort by time to ensure correct plotting
+                    measured_values = measured_values.sort_index()
+                    modeled_values = modeled_values.sort_index()
+
+                    # Plot the area between the curves
+                    ax.fill_between(measured_values.index, measured_values, modeled_values,
+                                   alpha=0.2, color='gray', label='Difference')
+
+            # Improve axis labels and title
+            ax.set_xlabel('Hydrological Year', fontsize=12, fontweight='bold')
+            ax.set_ylabel('Discharge [m³/s]', fontsize=12, fontweight='bold')
+            #ax.set_title(f"{station_name} (Code: {code})", fontsize=14, fontweight='bold', pad=20)
+
+            # Format x-axis for better date display
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+            ax.xaxis.set_major_locator(mdates.YearLocator())
+            plt.xticks(rotation=45)
+
+            # Add grid for better readability
+            ax.grid(True, linestyle='--', alpha=0.7)
+
+            # Improve legend
+            ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.15),
+                     ncol=3, frameon=True, fontsize=10, shadow=True)
+
+            # Add error metrics with better formatting
             if not data['measured_values'].isna().all() and not data['modeled_values'].isna().all():
                 # Calculate correlation only on rows where both values exist
                 valid_data = data.dropna()
                 if len(valid_data) > 1:  # Need at least 2 points for correlation
                     ws_correlation = valid_data['measured_values'].corr(valid_data['modeled_values'])
-                    
+
                     # Calculate relative error as percentage
-                    relative_error = ((valid_data['modeled_values'] - valid_data['measured_values']) / 
+                    relative_error = ((valid_data['modeled_values'] - valid_data['measured_values']) /
                                      valid_data['measured_values']).mean() * 100
-                    
-                    ax = g.axes[0][0]
-                    label = f"p = {ws_correlation:.2f}\ne = {relative_error:.2f}%"
-                    ax.annotate(text = label, xy = (.05, .85), xycoords = 'axes fraction')
+
+                    # Calculate RMSE
+                    rmse = np.sqrt(((valid_data['modeled_values'] - valid_data['measured_values']) ** 2).mean())
+
+                    # Add metrics in a nice text box
+                    metrics_text = (f"Correlation: {ws_correlation:.2f}\n"
+                                   f"Relative Error: {relative_error:.2f}%\n"
+                                   f"RMSE: {rmse:.2f} m³/s")
+
+                    # Create a text box for metrics
+                    props = dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8)
+                    ax.text(0.05, 0.95, metrics_text, transform=ax.transAxes, fontsize=10,
+                           verticalalignment='top', bbox=props)
                 else:
                     logger.warning(f"Not enough valid data points for station {code} to calculate correlation.")
 
-            plt.savefig(f'{out_dir}/{code}.png', dpi = 300, bbox_inches = 'tight')
-            plt.close()
+            # Adjust layout
+            plt.tight_layout()
 
-            logger.debug(f"Saved figure to {out_dir}/{code}.png")
+            # Save with high quality
+            plt.savefig(f'{out_dir}/{code}.png', dpi=300, bbox_inches='tight')
+            plt.close()
             
 
 
