@@ -27,10 +27,21 @@ def construct_interstation_watersheds(watersheds):
     for ws_id in watersheds.get_ids():
         if ws_id in INTERSTATION_NETWORK:
             original_region = watersheds.get_mask(ws_id)
+            fill_value = original_region.attrs.get('_FillValue', -999)
+
             nested_watersheds = INTERSTATION_NETWORK[ws_id]
             nested_watersheds = xr.concat([watersheds.get_mask(nw) for nw in nested_watersheds], dim="watershed").max('watershed')
 
             interstation_region = original_region.where(nested_watersheds != 1)
+
+            # Watersheds should have value 1 for valid areas
+            interstation_region = interstation_region.where(interstation_region == 1, fill_value)
+            
+            # Assign fill value attribute for metadata
+            interstation_region = interstation_region.assign_attrs(_FillValue=fill_value)
+            
+            # Ensure data is of integer type
+            interstation_region = interstation_region.astype(int)
         else:
             interstation_region = watersheds.get_mask(ws_id)
 
