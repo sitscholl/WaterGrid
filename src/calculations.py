@@ -114,8 +114,8 @@ def calculate_p_minus_et(precipitation: xr.DataArray, et: xr.DataArray) -> xr.Da
     # Check if both arrays have a time dimension
     if 'time' in precipitation.dims and 'time' in et.dims:
         # Infer the frequency of both time series
-        precip_freq = xr.infer_freq(precipitation.time)
-        et_freq = xr.infer_freq(et.time)
+        precip_freq = xr.infer_freq(precipitation.time) if len(precipitation.time) > 2 else "YE-SEP" #Assume hydrological year
+        et_freq = xr.infer_freq(et.time) if len(et.time) > 2 else "YE-SEP"
         
         logger.debug(f"Precipitation time frequency: {precip_freq}, ET time frequency: {et_freq}")
         
