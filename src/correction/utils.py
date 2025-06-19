@@ -30,7 +30,7 @@ def construct_interstation_watersheds(watersheds):
             nested_watersheds = INTERSTATION_NETWORK[ws_id]
             nested_watersheds = xr.concat([watersheds.get_mask(nw) for nw in nested_watersheds], dim="watershed").max('watershed')
 
-            interstation_region = original_region.mask(nested_watersheds != 1)
+            interstation_region = original_region.where(nested_watersheds != 1)
         else:
             interstation_region = watersheds.get_mask(ws_id)
 
