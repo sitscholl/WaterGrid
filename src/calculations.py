@@ -99,12 +99,13 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
         interstation_regions, precipitation.data, et, validation_tbl, freq=validation_freq
         )
     corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
-    pr_corr = pr_correction.apply_correction(precipitation.data.resample(time = validation_freq).sum(), corr_raster)
+    pr_aggregated = precipitation.data.resample(time = validation_freq).sum()
+    pr_corr = pr_correction.apply_correction(pr_aggregated, corr_raster)
     
     # Calculate water balance (P - ET)
     logger.info("Calculating water balance")
-    et_yearly = et.resample(time=validation_freq).sum()
-    water_balance_corrected = calculate_p_minus_et(pr_corr, et_yearly)
+    et_aggregated = et.resample(time=validation_freq).sum()
+    water_balance_corrected = calculate_p_minus_et(pr_corr, et_aggregated)
 
     # Validate results
     logger.info('Validating results after correction')
