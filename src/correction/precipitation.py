@@ -9,6 +9,7 @@ from .utils import construct_interstation_watersheds
 # from ..validation import Watersheds
 from ..data_io import load_static_data
 from ..resampling import resample_to_target_grid
+from ..config import SECONDS_PER_YEAR, SECONDS_PER_MONTH
 
 logger = logging.getLogger(__name__)
 
@@ -115,10 +116,14 @@ class PrCorrection:
         pd.DataFrame
             DataFrame containing correction factors (preci_factor and preci_diff)
         """
-        #TODO: At the moment, correction factors are calculated fixed for hydrological year. Make this dynamic by allowing different frequencies
+
+        if freq not in ['YE-SEP', 'ME']:
+            raise ValueError(f"Frequency {freq} is not supported. Please use 'YE-SEP' or 'ME'.")
+        seconds = SECONDS_PER_YEAR if freq == 'YE-SEP' else SECONDS_PER_MONTH
+
         try:
             
-            grouper = [pd.Grouper(freq='YE-SEP', level='time'), pd.Grouper(level = 'Code')]
+            grouper = [pd.Grouper(freq=freq, level='time'), pd.Grouper(level = 'Code')]
             target_res = self.config['spatial']['target_resolution']
 
             # Calculate modeled precipitation for interstation regions
@@ -130,7 +135,7 @@ class PrCorrection:
             modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(grouper).sum() #mm/year over entire watershed
 
             #measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)['measured_values'] #in m³/s
-            measured_interstation_discharge = (validation_tbl['measured_values'] * (365*24*60*60 * 1000)) / target_res**2 # Convert from m³/s to mm/year over watershed.
+            measured_interstation_discharge = (validation_tbl['measured_values'] * (seconds * 1000)) / target_res**2 # Convert from m³/s to mm/year or mm/month over watershed.
             measured_interstation_discharge = measured_interstation_discharge.groupby(grouper).sum()
 
             # Calculate expected precipitation based on water balance equation
@@ -223,7 +228,6 @@ class PrCorrection:
             self,
             precipitation: xr.DataArray,
             correction_grid: Optional[xr.DataArray] = None,
-            freq: Optional[str] = None
         ) -> xr.DataArray:
         """
         Apply correction to precipitation data.
@@ -243,12 +247,11 @@ class PrCorrection:
             Corrected precipitation data
         """   
 
-        if xr.infer_freq(precipitation.time) != "YE-SEP":
-            precipitation = precipitation.resample(time = 'YE-SEP').sum()
-            precipitation = precipitation.rio.set_spatial_dims(x_dim = 'lon', y_dim = 'lat')
+        if not precipitation.time.equals(correction_grid.time):
+            raise ValueError("Got mismatched time dimensions between precipitation and correction grid. Cannot apply correction.")
 
         # Ensure the correction grid matches the precipitation grid
-        correction_grid = correction_grid.rename({'lon': 'x', 'lat': 'y'}).rio.reproject_match(precipitation)
+        correction_grid = correction_grid.rename({'lon': 'x', 'lat': 'y'}).rio.reproject_match(precipitation.rename({'lon': 'x', 'lat': 'y'}))
         correction_grid = correction_grid.rename({'x': 'lon', 'y': 'lat'})
         
         # Apply the correction

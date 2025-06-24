@@ -84,37 +84,37 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
 
     # Initialize validator
     logger.info("Initializing validator")
+    validation_freq = 'ME' #fixed parameter for now
     validator = Validator(config)
     # Use precipitation here, because we want to compare summed modeled precipitation 
     # with expected precipitation from discharge stations
-    validation_tbl = validator.validate(interstation_regions, precipitation.data, compute_for_interstation_regions=True)
+    validation_tbl = validator.validate(
+        interstation_regions, precipitation.data, compute_for_interstation_regions=True, freq=validation_freq
+        )
 
     # Precipitation Correction
     logger.info("Correcting Precipitation")
     pr_correction = PrCorrection(config)
     correction_factors = pr_correction.calculate_correction_factors(
-        interstation_regions, precipitation.data, et, validation_tbl
+        interstation_regions, precipitation.data, et, validation_tbl, freq=validation_freq
         )
     corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
-    pr_corr = pr_correction.apply_correction(precipitation.data, corr_raster)
+    pr_corr = pr_correction.apply_correction(precipitation.data.resample(time = validation_freq).sum(), corr_raster)
     
     # Calculate water balance (P - ET)
     logger.info("Calculating water balance")
-    ##TODO: Change fixed frequency here and allow dynamic frequency
-    et_yearly = et.resample(time='YE-SEP').sum()
+    et_yearly = et.resample(time=validation_freq).sum()
     water_balance_corrected = calculate_p_minus_et(pr_corr, et_yearly)
 
     # Validate results
     logger.info('Validating results after correction')
-    validation_tbl_after_correction = validator.validate(watersheds, water_balance_corrected)
+    validation_tbl_after_correction = validator.validate(watersheds, water_balance_corrected, freq=validation_freq)
     validator.plot_timeseries(validation_tbl_after_correction)
     
-    # Aggregate results based on output frequency
+    # Save results
     output_frequency = config["temporal"].get("output_frequency", "monthly")
     if isinstance(output_frequency, str):
         output_frequency = [output_frequency]
-    
-    # Save results
     logger.info(f"Aggregating results to {output_frequency} frequency")
     output_paths = save_results(water_balance_corrected, output_frequency, config)
     
@@ -133,6 +133,9 @@ def calculate_p_minus_et(precipitation: xr.DataArray, et: xr.DataArray) -> xr.Da
     # Ensure precipitation and ET have the same dimensions
     if set(precipitation.dims) != set(et.dims):
         raise ValueError("Precipitation and ET must have the same dimensions")
+
+    if not precipitation.time.equals(et.time):
+        raise ValueError("Got mismatched time dimensions between precipitation and evapotranspiration. Cannot calculate water balance.")
     
     # Check if both arrays have a time dimension
     if 'time' in precipitation.dims and 'time' in et.dims:

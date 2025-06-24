@@ -10,6 +10,7 @@ from pathlib import Path
 
 from src.cluster import start_dask_cluster
 from ..correction.utils import get_measured_discharge_for_interstation_regions
+from ..config import SECONDS_PER_YEAR, SECONDS_PER_MONTH
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ class Validator:
         if freq not in ['YE-SEP', 'ME']:
             raise ValueError(f"Frequency {freq} is not supported. Please use 'YE-SEP' or 'ME'.")
 
-        min_size = 365 if freq == 'YE-SEP' else 30
+        min_size = 365 if freq == 'YE-SEP' else 28
 
         data_agg = (
             self.data
@@ -214,7 +215,7 @@ class Validator:
             NotImplementedError: If frequency other than 'YE-SEP' is specified
             ValueError: If rio accessor is not available
         """
-            
+
         # Aggregate water balance data to the specified frequency
         if len(water_balance.time) > 2 and xr.infer_freq(water_balance.time) != freq:
             balance_agg = water_balance.resample(time = freq).sum()
@@ -232,9 +233,13 @@ class Validator:
         res = water_balance.rio.resolution()[0]
         modeled_discharge = modeled_data * (res**2) / 1000
 
-        ## Transform from m³/year to m³/s
-        seconds_per_year = 365.25 * 24 * 60 * 60  # More accurate seconds per year
-        modeled_discharge /= seconds_per_year
+        ## Transform from m³/year or m³/month to m³/s
+        if freq == 'YE-SEP':
+            modeled_discharge /= SECONDS_PER_YEAR
+        elif freq == 'ME':
+            modeled_discharge /= SECONDS_PER_MONTH
+        else:
+            raise NotImplementedError(f"Frequency {freq} is not supported. Please use 'YE-SEP' or 'ME'.")
 
         # Get measured discharge data
         measured_discharge = self.aggregate(freq = freq, compute_for_interstation_regions = compute_for_interstation_regions) #unit is in m³/s (average discharge per hydrological year)
