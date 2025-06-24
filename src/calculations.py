@@ -46,26 +46,30 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     #     client, cluster = start_dask_cluster()
 
     # Load input data
-    temperature = Temperature(config)
-    # temperature.correct() #TODO: Improve this calculation as dask graph seems very inefficient
-    temperature.to_geotiff()
-
-    precipitation = Precipitation(config)
-    precipitation.to_geotiff()
-
+    # The landuse data determines resolution, crs and chunking
     landuse = Landuse(config)
     landuse.load()
-        
-    # Resample data to target grid if needed
-    target_resolution = config["spatial"].get("target_resolution", 5)  # Default to 5m
+
+    target_resolution = landuse.data.rio.resolution()[0]
+    target_crs = landuse.data.rio.crs.to_epsg()
     resampling_method = config["spatial"].get("resampling_method", "bilinear")
-    
-    # Create target grid based on landuse (high resolution) data
-    logger.info(f"Resampling data to target resolution of {target_resolution}m")
+
+    # Load temperatue and precipitation data
+    temperature = Temperature(config)
+    # temperature.correct() #TODO: Improve this calculation as dask graph seems very inefficient
+    # temperature.to_geotiff()
+
+    precipitation = Precipitation(config)
+    # precipitation.to_geotiff()
     
     # Resample temperature and precipitation to target grid
+    logger.info(f"Resampling data to target resolution of {target_resolution}m")
     temperature.resample_match(landuse.data, resampling_method)
     precipitation.resample_match(landuse.data, resampling_method)
+
+    # Align chunks in landuse with chunks in climate data
+    logger.info('Aligning chunks in landuse with climate data chunks')
+    landuse.align_chunks(temperature.data)
     
     # Calculate potential evapotranspiration using Thornthwaite method
     logger.info("Calculating potential evapotranspiration using Thornthwaite method")
@@ -94,10 +98,16 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
 
     # Precipitation Correction
     logger.info("Correcting Precipitation")
-    pr_correction = PrCorrection(config)
+    pr_correction = PrCorrection(
+        config,
+        target_res = target_resolution,
+        target_crs = target_crs,
+        chunks = dict(zip(landuse.data.dims, landuse.data.chunks))
+        )
     correction_factors = pr_correction.calculate_correction_factors(
         interstation_regions, precipitation.data, et, validation_tbl, freq=validation_freq
         )
+    ##TODO: Create chunked corr_raster?
     corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
     pr_aggregated = precipitation.data.resample(time = validation_freq).sum()
     pr_corr = pr_correction.apply_correction(pr_aggregated, corr_raster)

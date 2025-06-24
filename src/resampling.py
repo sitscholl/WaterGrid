@@ -58,8 +58,12 @@ def resample_to_target_grid(source: xr.DataArray, target: xr.DataArray, method: 
     
     # First ensure the source is in the same CRS as the target
     if source.rio.crs != target_crs:
-        # This step still loads into memory, but we need it for CRS transformation
-        logger.warning(f"Source CRS ({source.rio.crs}) does not match target CRS ({target_crs}). Reprojecting source to match target CRS (requires array to be loaded into memory).")
+        # This step loads into memory, but we need it for CRS transformation
+        logger.warning(f"""
+            Source CRS ({source.rio.crs}) does not match target CRS ({target_crs}). 
+            Reprojecting source to match target CRS This requires the array to be loaded into memory.
+            If you want to avoid this, save the target dataset in the same crs as the source dataset.
+        """)
         source = source.rio.reproject(
             target_crs,
             resampling=resampling_methods_rasterio[method]

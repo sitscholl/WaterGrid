@@ -21,7 +21,7 @@ class PrCorrection:
     like station distance, wind effect, and validation data.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, **kwargs):
         """
         Initialize the PrCorrection class.
 
@@ -45,10 +45,10 @@ class PrCorrection:
         wind_effect_path = config['input'].get('wind_effect', {}).get('path')
 
         try:
-            station_distance = load_static_data(config, 'station_distance')
+            station_distance = load_static_data(config, 'station_distance', **kwargs)
 
             if wind_effect_path is not None:
-                wind_effect = load_static_data(config, 'wind_effect')
+                wind_effect = load_static_data(config, 'wind_effect', **kwargs)
                 wind_effect = resample_to_target_grid(wind_effect, station_distance)
 
                 # Ensure consistent coordinate names
@@ -124,7 +124,7 @@ class PrCorrection:
         try:
             
             grouper = [pd.Grouper(freq=freq, level='time'), pd.Grouper(level = 'Code')]
-            target_res = self.config['spatial']['target_resolution']
+            target_res = precipitation.rio.resolution()[0]
 
             # Calculate modeled precipitation for interstation regions
             modeled_interstation_precipitation = watersheds.aggregate(precipitation)['modeled_values']

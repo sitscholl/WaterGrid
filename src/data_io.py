@@ -23,6 +23,7 @@ import yaml
 from rasterio.enums import Resampling
 
 from .config import BOUNDING_BOXES
+from .utils import align_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ def apply_spatial_filter(
     return data
 
 
-def load_climate_data(config: Dict[str, Any], data_type: str) -> xr.Dataset:
+def load_climate_data(config: Dict[str, Any], data_type: str, chunks: dict[tuple] = None) -> xr.Dataset:
     """Load climate data (temperature or precipitation) from zarr dataset.
     
     Args:
@@ -138,7 +139,7 @@ def load_climate_data(config: Dict[str, Any], data_type: str) -> xr.Dataset:
         raise FileNotFoundError(f"{data_type.capitalize()} data not found: {data_path}")
     
     # Load with dask for chunked processing
-    ds = xr.open_zarr(data_path, chunks=config["processing"]["chunk_size"], decode_coords='all')
+    ds = xr.open_zarr(data_path, chunks='auto', decode_coords='all')
     
     # Check for the variable
     var_name = data_config["variable"]
@@ -157,6 +158,8 @@ def load_climate_data(config: Dict[str, Any], data_type: str) -> xr.Dataset:
     # Compute if not using dask
     if not config['processing'].get('use_dask', True):
         ds = ds.compute()
+    elif chunks is not None:
+        ds = align_chunks(ds, chunks)
 
     # Drop time coordinates where all values are NaN
     # ds = ds.dropna(dim="time", how="all", subset=[var_name])
@@ -168,7 +171,14 @@ def load_climate_data(config: Dict[str, Any], data_type: str) -> xr.Dataset:
     
     return ds[var_name]
 
-def load_static_data(config: Dict[str, Any], var_name: str, resampling_method = 'nearest'):
+def load_static_data(
+    config: Dict[str, Any], 
+    var_name: str, 
+    resampling_method = 'nearest', 
+    target_res: int = None,
+    target_crs: str = None,
+    chunks: dict[tuple] = None
+    ):
 
     data_config = config["input"].get(var_name)
     if not data_config:
@@ -177,16 +187,15 @@ def load_static_data(config: Dict[str, Any], var_name: str, resampling_method = 
     data_path = Path(data_config["path"])
     if not data_path.exists():
         raise ValueError(f'File does not exist: {data_path}')
-
-    target_res = config['spatial'].get('target_resolution', 250)
-    target_crs = config['spatial'].get("target_crs", "EPSG:32632")
     
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Data not found: {data_path}")
     
     # Load with rioxarray
-    data = rioxarray.open_rasterio(data_path).squeeze(drop = True)
-    data = data.where(data != data.attrs['_FillValue'])
+    data = xr.open_dataset(data_path, chunks = -1).squeeze(drop = True)
+    data = data[list(data.keys())[0]]
+    if '_FillValue' in data.attrs:
+        data = data.where(data != data.attrs['_FillValue'])
     data.attrs['_FillValue'] = np.nan
 
     if "x" in data.coords:
@@ -201,7 +210,7 @@ def load_static_data(config: Dict[str, Any], var_name: str, resampling_method = 
     #     data = data.reindex(lat=lat_values[::-1])
     
     # Check CRS
-    if (data.rio.crs.to_string() != target_crs) or (data.rio.resolution()[0] != target_res):
+    if (target_crs is not None and data.rio.crs.to_string() != target_crs) or (target_res is not None and data.rio.resolution()[0] != target_res):
         logger.info(f"Reprojecting data to {target_crs} and resolution {target_res} using {resampling_method} for resampling.")
 
         RESAMPLING_MAPPING = {
@@ -228,6 +237,12 @@ def load_static_data(config: Dict[str, Any], var_name: str, resampling_method = 
 
     # Apply spatial filtering
     data = apply_spatial_filter(data, config)
+
+    # Compute if not using dask
+    if not config['processing'].get('use_dask', True):
+        data = data.compute()
+    elif chunks is not None:
+        data = align_chunks(data, chunks)
 
     return data
 

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 
 import pandas as pd
+import xarray as xr
 
 
 def setup_logging(level: int = logging.INFO) -> logging.Logger:
@@ -101,6 +102,18 @@ def format_elapsed_time(seconds: float) -> str:
     
     return " ".join(parts)
 
+def align_chunks(data: xr.DataArray | xr.Dataset, target_chunks: dict[tuple]):
+
+    if target_chunks is None:
+        return data
+
+    if not isinstance(target_chunks, dict):
+        raise ValueError(f"target_chunks must be a dictionary mapping dimensions to chunk sizes, got {type(target_chunks)} instead.")
+        
+    common_dims = set(target_chunks.keys()) & set(data.dims)
+    data_chunks = {dim: target_chunks[dim] for dim in common_dims}
+   
+    return data.chunk(data_chunks)
 
 def validate_config(config: Dict[str, Any]) -> List[str]:
     """Validate configuration and return a list of validation errors.
