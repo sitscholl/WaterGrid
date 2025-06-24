@@ -258,7 +258,7 @@ class Validator:
         
         return validation_tbl
     
-    def plot_timeseries(self, validation_tbl):
+    def plot_timeseries(self, validation_tbl, clip: bool = True):
         """
         Plot time series of modeled and measured discharge for each station.
 
@@ -296,7 +296,7 @@ class Validator:
             # Add shaded area to highlight differences
             if not measured.empty and not modeled.empty:
                 # Create a common time index
-                common_times = pd.merge(measured, modeled, on='time', how='inner')['time']
+                common_times = pd.merge(measured, modeled, on='time', how='inner').dropna()['time']
                 if not common_times.empty:
                     measured_values = measured[measured['time'].isin(common_times)].set_index('time')['value']
                     modeled_values = modeled[modeled['time'].isin(common_times)].set_index('time')['value']
@@ -308,6 +308,12 @@ class Validator:
                     # Plot the area between the curves
                     ax.fill_between(measured_values.index, measured_values, modeled_values,
                                    alpha=0.2, color='gray', label='Difference')
+            
+            if clip:
+                common_times = pd.merge(measured, modeled, on='time', how='inner').dropna()['time']
+                if not common_times.empty:
+                    xmin, xmax = common_times.min(), common_times.max()
+                    ax.set_xlim(xmin, xmax)
 
             # Improve axis labels and title
             ax.set_xlabel('Hydrological Year', fontsize=12, fontweight='bold')
