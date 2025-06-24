@@ -30,7 +30,7 @@ def construct_interstation_watersheds(watersheds):
             fill_value = original_region.attrs.get('_FillValue', -999)
 
             nested_watersheds = INTERSTATION_NETWORK[ws_id]
-            nested_watersheds = xr.concat([watersheds.get_mask(nw) for nw in nested_watersheds], dim="watershed").max('watershed')
+            nested_watersheds = xr.concat([watersheds.get_mask(nw) for nw in nested_watersheds if watersheds.get_mask(nw) is not None], dim="watershed").max('watershed')
 
             interstation_region = original_region.where(nested_watersheds != 1)
 
