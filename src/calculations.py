@@ -24,6 +24,8 @@ from src.data_io import (
     save_metadata
 )
 from src.calc.evapotranspiration import calculate_thornthwaite_pet, adjust_pet_with_kc
+from src.correction.utils import construct_interstation_watersheds
+from src.correction import PrCorrection
 # from src.cluster import start_dask_cluster
 from src.utils import get_season
 from src.config import DATETIME_FREQUENCY_MAPPING
@@ -73,27 +75,48 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     logger.info("Adjusting potential evapotranspiration using crop coefficients")
     landuse.correct()
     et = adjust_pet_with_kc(pet, landuse.kc_grid, config)
+
+    # Initialize watersheds and interstation watersheds
+    logger.info("Initializing watersheds and interstation watersheds")
+    watersheds = Watersheds(config)
+    watersheds.load(target = landuse.data)
+    interstation_regions = Watersheds(config, data=construct_interstation_watersheds(watersheds))
+
+    # Initialize validator
+    logger.info("Initializing validator")
+    validator = Validator(config)
+    # Use precipitation here, because we want to compare summed modeled precipitation 
+    # with expected precipitation from discharge stations
+    validation_tbl = validator.validate(interstation_regions, precipitation.data, compute_for_interstation_regions=True)
+
+    # Precipitation Correction
+    logger.info("Correcting Precipitation")
+    pr_correction = PrCorrection(config)
+    correction_factors = pr_correction.calculate_correction_factors(
+        interstation_regions, precipitation.data, pet, validation_tbl
+        )
+    corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
+    pr_corr = pr_correction.apply_correction(precipitation.data, corr_raster)
     
     # Calculate water balance (P - ET)
     logger.info("Calculating water balance")
-    water_balance = calculate_p_minus_et(precipitation.data, et)
+    ##TODO: Change fixed frequency here and allow dynamic frequency
+    et_yearly = et.resample(time='YE-SEP').sum()
+    water_balance_corrected = calculate_p_minus_et(pr_corr, et_yearly)
 
-    # Validation
-    watersheds = Watersheds(config)
-    watersheds.load(target = landuse.data)
-
-    validator = Validator(config)
-    validation_tbl = validator.validate(watersheds, water_balance)
-    validator.plot_timeseries(validation_tbl)
+    # Validate results
+    logger.info('Validating results after correction')
+    validation_tbl_after_correction = validator.validate(watersheds, water_balance_corrected)
+    validator.plot_timeseries(validation_tbl_after_correction)
     
     # Aggregate results based on output frequency
     output_frequency = config["temporal"].get("output_frequency", "monthly")
     if isinstance(output_frequency, str):
         output_frequency = [output_frequency]
-    logger.info(f"Aggregating results to {output_frequency} frequency")
     
     # Save results
-    output_paths = save_results(water_balance, output_frequency, config)
+    logger.info(f"Aggregating results to {output_frequency} frequency")
+    output_paths = save_results(water_balance_corrected, output_frequency, config)
     
     return output_paths
 
