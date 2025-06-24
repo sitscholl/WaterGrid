@@ -51,12 +51,12 @@ spatial:
   target_resolution: 250  # Output resolution in meters
   target_crs: "EPSG:32632"
   resampling_method: "bilinear"  # Method for resampling (nearest, bilinear, cubic)
-  region: toell
+  region: brixen
 
 # Temporal parameters
 temporal:
   start_date: "1999-10-01"
-  end_date: "2003-09-30"
+  end_date: "2000-09-30"
   output_frequency: [monthly, annual]  # Options: daily, monthly, seasonal, annual
 
 # Processing options
