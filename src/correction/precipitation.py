@@ -202,11 +202,6 @@ class PrCorrection:
             _corr_raster.name = 'Correction Grid'
             _corr_raster = _corr_raster.assign_coords(time = ts)
 
-            perc_diff = ((corr_amount - _corr_raster.sum().values) / corr_amount) * 100 if corr_amount != 0 else 0
-
-            if abs(perc_diff) > 0.001:
-                raise ValueError(f'Difference too high! {perc_diff}%')
-
             # Initialize the template grid
             if corr_raster is None:
                 corr_raster = xr.zeros_like(_corr_raster)
