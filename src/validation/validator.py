@@ -155,7 +155,7 @@ class Validator:
         
         return result
 
-    def aggregate(self, freq: str = 'YE-SEP', method = "mean", min_size: int = 365, compute_for_interstation_regions = False):
+    def aggregate(self, freq: str = 'YE-SEP', method = "mean", compute_for_interstation_regions = False):
         """
         Aggregate the discharge data to the specified frequency.
         
@@ -172,6 +172,11 @@ class Validator:
         """
         if self.data is None:
             raise ValueError("Data has not been loaded. Please load data first before calculating discharge.")
+
+        if freq not in ['YE-SEP', 'ME']:
+            raise ValueError(f"Frequency {freq} is not supported. Please use 'YE-SEP' or 'ME'.")
+
+        min_size = 365 if freq == 'YE-SEP' else 30
 
         data_agg = (
             self.data
@@ -209,13 +214,10 @@ class Validator:
             NotImplementedError: If frequency other than 'YE-SEP' is specified
             ValueError: If rio accessor is not available
         """
-
-        if freq != 'YE-SEP':
-            raise NotImplementedError("Only 'YE-SEP' frequency is currently supported.")
             
         # Aggregate water balance data to the specified frequency
         if len(water_balance.time) > 2 and xr.infer_freq(water_balance.time) != freq:
-            balance_agg = water_balance.resample(time = freq).sum(min_count = 12)
+            balance_agg = water_balance.resample(time = freq).sum()
         else:
             #Assume correct frequency
             balance_agg = water_balance
