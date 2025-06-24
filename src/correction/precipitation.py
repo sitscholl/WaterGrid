@@ -5,10 +5,10 @@ import numpy as np
 import logging
 from typing import Union, Optional
 
-from src.correction.utils import construct_interstation_watersheds
-from src.validation import Watersheds
-from src.data_io import load_static_data
-from src.resampling import resample_to_target_grid
+from .utils import construct_interstation_watersheds
+# from ..validation import Watersheds
+from ..data_io import load_static_data
+from ..resampling import resample_to_target_grid
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class PrCorrection:
 
     def calculate_correction_factors(
             self,
-            watersheds: Watersheds,
+            watersheds,
             precipitation: Union[xr.DataArray, xr.Dataset],
             et: Union[xr.DataArray, xr.Dataset],
             validation_tbl: pd.DataFrame,

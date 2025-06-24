@@ -5,9 +5,9 @@ import pandas as pd
 import logging
 from pathlib import Path
 
-from src.core.base import BaseProcessor
-from src.resampling import resample_to_target_grid
-from src.data_io import apply_spatial_filter
+from ..core.base import BaseProcessor
+from ..resampling import resample_to_target_grid
+from ..data_io import apply_spatial_filter
 
 logger = logging.getLogger(__name__)
 
