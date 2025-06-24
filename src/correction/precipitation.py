@@ -245,9 +245,10 @@ class PrCorrection:
 
         if xr.infer_freq(precipitation.time) != "YE-SEP":
             precipitation = precipitation.resample(time = 'YE-SEP').sum()
+            precipitation = precipitation.rio.set_spatial_dims(x_dim = 'lon', y_dim = 'lat')
 
         # Ensure the correction grid matches the precipitation grid
-        correction_grid = correction_grid.rio.reproject_match(precipitation)
+        correction_grid = correction_grid.rename({'lon': 'x', 'lat': 'y'}).rio.reproject_match(precipitation)
         correction_grid = correction_grid.rename({'x': 'lon', 'y': 'lat'})
         
         # Apply the correction
