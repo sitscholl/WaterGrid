@@ -47,6 +47,8 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
     # Silence noisy libraries
     logging.getLogger('rasterio').setLevel(logging.WARNING)
     logging.getLogger('numcodecs').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
     
     logger = logging.getLogger("water_balance")
     logger.info(f"Logging initialized at level {logging.getLevelName(level)}")
