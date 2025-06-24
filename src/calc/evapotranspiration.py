@@ -148,18 +148,10 @@ def adjust_pet_with_kc(pet: xr.DataArray,
     ##Assign seasons to pet
     season_months = config["seasons"]
     time_coords = [pd.to_datetime(i) for i in pet['time'].values]
-    seasons = [get_season(i, season_months) for i in time_coords]
+    pet = pet.assign_coords(season = ('time', [get_season(i, season_months) for i in time_coords]))
 
-   # Apply the appropriate seasonal Kc value to each timestep
-    et = xr.zeros_like(pet)
-    for i, (time_val, season) in enumerate(zip(pet.time.values, seasons)):
-        # Select the correct seasonal Kc grid
-        seasonal_kc = kc_grid.sel(season=season)
-        
-        # Apply to the corresponding time slice of pet
-        time_slice = pet.sel(time=time_val)
-        et[i, :, :] = time_slice * seasonal_kc
+    et = pet.groupby("season") * kc_grid.drop('spatial_ref')
 
-        logger.debug('Adjusted PET for time step %s and season %s', time_val, season)
+    et = et.rio.set_spatial_dims(x_dim="lon", y_dim="lat")
     
     return et
