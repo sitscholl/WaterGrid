@@ -5,80 +5,72 @@ import pandas as pd
 import logging
 from pathlib import Path
 
-from ..core.base import BaseProcessor
-from ..resampling import resample_to_target_grid
-from ..data_io import apply_spatial_filter
+from ..core import WatershedLoader
+from ..utils import align_chunks
 
 logger = logging.getLogger(__name__)
 
+class Watersheds:
 
-class Watersheds(BaseProcessor):
+    def __init__(self, config, var_name: str, data: dict | None = None, **kwargs):
 
-    def __init__(self, config, data: dict | None = None):
-        super().__init__(config)
+        self.config = config
+        self.var_name = var_name
 
-        self.var_name = 'watersheds'
         if data is None:
-            self.data = {}
+            self.data = self.load(var_name=self.var_name, **kwargs)
         else:
             if not isinstance(data, dict):
                 raise ValueError("Data must be a dictionary")
             self.data = data
 
-        watersheds_config = config['input'].get('watersheds')
-        if watersheds_config is None:
-            logger.warning("Watersheds configuration is missing in the input configuration. No validation will be carried out.")
-            self.validate = False
-        else:
-            self.validate = True
+    def load(self, var_name: str, target: xr.DataArray | xr.Dataset | None = None, method: str = 'nearest'):
 
-    def load(self, target: xr.DataArray | xr.Dataset):
-        if not self.validate:
-            logger.warning("No watersheds configuration to load.")
-            return
+        ws_config = self.config['input'].get(var_name)
 
-        ws_config = self.config['input']['watersheds']
+        if ws_config is None:
+            raise ValueError(f"No configuration found for variable name: {var_name}")
+
         ws_root = Path(ws_config.get('root', '.'))
         ws_files = list(ws_root.glob(ws_config.get('pattern', '*.tif')))
         fill_value = ws_config.get('fill_value', -999)
 
         logger.debug(f"Found {len(ws_files)} watershed files")
 
+        watersheds = {}
         for ws_file in ws_files:
-            ws = xr.open_dataset(ws_file)
-            ws = ws[list(ws.keys())[0]]
-            ws = ws.squeeze(drop = True)
-
-            if 'x' in ws.dims or 'y' in ws.dims:
-                ws = ws.rename({'x': 'lon', 'y': 'lat'})
-
-            # Apply spatial filter
-            ws = apply_spatial_filter(ws, self.config)
+            # WatershedLoader expects a dictionary with the configuration  
+            ws_file_config = {'input': {var_name: {'path': ws_file}},
+                              'spatial': self.config['spatial']}   
+            ws = WatershedLoader(ws_file_config, var_name = var_name, target = target, method = method).data
 
             if any([i == 0 for j, i in ws.sizes.items()]):
-                logger.warning(f"Watershed {ws_file.name} contains zero-sized dimensions after spatial filtering.")
                 continue
-            
-            # Resample to target grid
-            ws_re = resample_to_target_grid(
-                ws, 
-                target, 
-                method = 'nearest'
-            )
 
             # Apply fill value to nodata areas (assuming 0 or NaN are nodata)
             # Watersheds should have value 1 for valid areas
-            ws_re = ws_re.where(ws_re > 0, fill_value)
+            ws = ws.where(ws > 0, fill_value)
             
             # Assign fill value attribute for metadata
-            ws_re = ws_re.assign_attrs(_FillValue=fill_value)
+            ws = ws.assign_attrs(_FillValue=fill_value)
+
+            # Assign coordinate
+            ws = ws.assign_coords({'id': ws_file.stem})
             
             # Ensure data is of integer type
             if not np.issubdtype(ws.dtype, np.integer):
                 logger.debug(f"File {ws_file} has non-integer data type. Converting to int")
-                ws_re = ws_re.astype(int)
+                ws = ws.astype(int)
             
-            self.data[ws_file.stem] = ws_re
+            watersheds[ws_file.stem] = ws
+        
+        return watersheds
+
+    def align_chunks(self, target: xr.DataArray | xr.Dataset):
+        target_chunks = dict(zip(target.dims, target.chunks))
+
+        for i, data in self.data.items():
+            self.data[i] = align_chunks(data, target_chunks)
 
     def get_ids(self) -> list | None:
         return list(self.data.keys())
