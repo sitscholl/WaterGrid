@@ -46,15 +46,16 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     #     client, cluster = start_dask_cluster()
 
     resampling_method = config["spatial"].get("resampling_method", "bilinear")
+
     # Load input data
     # The landuse data determines resolution, crs and chunking
     landuse = Landuse(config, var_name = 'landuse')
-    temperature = Temperature(config, var_name = 'temperature', target = landuse.data)
-    precipitation = Precipitation(config, var_name = 'precipitation', target = landuse.data)
+    temperature = Temperature(config, var_name = 'temperature', target = landuse.data, method = resampling_method)
+    precipitation = Precipitation(config, var_name = 'precipitation', target = landuse.data, method = resampling_method)
     # temperature.correct() #TODO: Improve this calculation as dask graph seems very inefficient
     # temperature.to_geotiff()
     # precipitation.to_geotiff()
-    
+
     # Align chunks in landuse with chunks in climate data
     logger.info('Aligning chunks in landuse with climate data chunks')
     landuse.align_chunks(temperature.data)
@@ -70,9 +71,9 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
 
     # Initialize watersheds and interstation watersheds
     logger.info("Initializing watersheds and interstation watersheds")
-    watersheds = Watersheds(config)
-    watersheds.load(target = landuse.data)
-    interstation_regions = Watersheds(config, data=construct_interstation_watersheds(watersheds))
+    watersheds = Watersheds(config, var_name = 'watersheds', target = landuse.data, method = 'nearest')
+    watersheds.align_chunks(landuse.data)
+    interstation_regions = Watersheds(config, var_name = 'interstation_regions', data=construct_interstation_watersheds(watersheds))
 
     # Initialize validator
     logger.info("Initializing validator")
