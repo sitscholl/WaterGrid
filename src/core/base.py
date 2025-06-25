@@ -5,34 +5,28 @@ from datetime import datetime
 import xarray as xr
 from pandas import to_datetime
 
+from ..data_io import apply_spatial_filter
 from ..resampling import resample_to_target_grid
 
 logger = logging.getLogger(__name__)
 
 class BaseProcessor(ABC):
 
-    def __init__(self, config):
+    def __init__(self, config: dict, var_name: str, target: xr.DataArray | xr.Dataset | None = None, **kwargs):
         self.config = config
-        self.data = None
-        self.var_name = None
+        self.var_name = var_name
 
-    def resample_match(self, target: xr.DataArray, method: str = "bilinear") -> xr.DataArray:
-        """Resample a source grid to match a target grid while preserving chunking.
-        
-        Args:
-            source: DataArray to resample
-            target: DataArray with the target grid
-            method: Resampling method (nearest, bilinear, cubic)
+        data = self.load(var_name = var_name)
+        if target is not None:
+            data = resample_to_target_grid(data, target, **kwargs)
+        data = apply_spatial_filter(data, config)
 
-        """
+        self.data = data
 
-        if self.data is None:
-            raise ValueError("No data loaded. Please load data before resampling.")
-        source = self.data
-        
-        resampled = resample_to_target_grid(source, target, method)
-        
-        self.data = resampled
+        logger.info(f"Loaded {var_name} data")
+        logger.debug(f"{var_name.capitalize()} data shape: {data.shape}")
+        logger.debug(f"{var_name.capitalize()} data crs: {data.rio.crs}")
+        logger.debug(f"{var_name.capitalize()} data resolution: {data.rio.resolution()}")
 
     def to_geotiff(self):
 

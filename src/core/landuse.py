@@ -1,37 +1,26 @@
 import xarray as xr
-import rioxarray
-from rasterio.enums import Resampling
 import pandas as pd
 
 import os
 import logging
 
 from .base import BaseProcessor
-from ..data_io import apply_spatial_filter, load_static_data
+from ..data_io import load_static_data
 from ..utils import align_chunks
 
 logger = logging.getLogger(__name__)
 
 class Landuse(BaseProcessor):
 
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.coefficients = None
         self.kc_grid = None
-        self.var_name = 'landuse'
 
-    def load(self, **kwargs):
+    def load(self, var_name):
         """Load land-use data from GeoTIFF."""
-
-        landuse = load_static_data(self.config, var_name = 'landuse', resampling_method = 'nearest', **kwargs)
-        
-        logger.info(f"Loaded land-use data from {self.config['input']['landuse']}")
-        logger.debug(f"Land-use data shape: {landuse.shape}")
-        logger.debug(f"Land-use data crs: {landuse.rio.crs}")
-        logger.debug(f"Land-use data resolution: {landuse.rio.resolution()}")
-        
-        self.data = landuse
+        return load_static_data(self.config, var_name = 'landuse')
 
     def align_chunks(self, target: xr.DataArray | xr.Dataset):
         target_chunks = dict(zip(target.dims, target.chunks))
