@@ -115,7 +115,7 @@ def apply_spatial_filter(
     return data
 
 
-def load_climate_data(config: Dict[str, Any], data_type: str, chunks: dict[tuple] = None) -> xr.Dataset:
+def load_climate_data(config: Dict[str, Any], var_name: str) -> xr.Dataset:
     """Load climate data (temperature or precipitation) from zarr dataset.
     
     Args:
@@ -129,14 +129,12 @@ def load_climate_data(config: Dict[str, Any], data_type: str, chunks: dict[tuple
         FileNotFoundError: If the climate data file does not exist
         ValueError: If the data_type is not supported or variable not found in dataset
     """
-    if data_type not in ["temperature", "precipitation"]:
-        raise ValueError(f"Unsupported data type: {data_type}. Use 'temperature' or 'precipitation'")
     
-    data_config = config["input"][data_type]
+    data_config = config["input"][var_name]
     data_path = data_config["path"]
     
     if not os.path.exists(data_path):
-        raise FileNotFoundError(f"{data_type.capitalize()} data not found: {data_path}")
+        raise FileNotFoundError(f"{var_name.capitalize()} data not found: {data_path}")
     
     # Load with dask for chunked processing
     ds = xr.open_zarr(data_path, chunks='auto', decode_coords='all')
@@ -144,7 +142,7 @@ def load_climate_data(config: Dict[str, Any], data_type: str, chunks: dict[tuple
     # Check for the variable
     var_name = data_config["variable"]
     if var_name not in ds:
-        raise ValueError(f"{data_type.capitalize()} variable '{var_name}' not found in dataset")
+        raise ValueError(f"{var_name.capitalize()} variable '{var_name}' not found in dataset")
    
     # Filter by date range if specified
     if "temporal" in config and "start_date" in config["temporal"] and "end_date" in config["temporal"]:
@@ -152,32 +150,14 @@ def load_climate_data(config: Dict[str, Any], data_type: str, chunks: dict[tuple
         end_date = config["temporal"]["end_date"]
         ds = ds.sel(time=slice(start_date, end_date))
 
-    # Apply spatial filtering
-    ds = apply_spatial_filter(ds, config)
-
-    # Compute if not using dask
-    if not config['processing'].get('use_dask', True):
-        ds = ds.compute()
-    elif chunks is not None:
-        ds = align_chunks(ds, chunks)
-
     # Drop time coordinates where all values are NaN
     # ds = ds.dropna(dim="time", how="all", subset=[var_name])
-    
-    logger.info(f"Loaded {data_type} data from {data_path}")
-    logger.debug(f"{data_type.capitalize()} data shape: {ds[var_name].shape}")
-    logger.debug(f"{data_type.capitalize()} data crs: {ds[var_name].rio.crs}")
-    logger.debug(f"{data_type.capitalize()} data resolution: {ds[var_name].rio.resolution()}")
-    
+        
     return ds[var_name]
 
 def load_static_data(
         config: Dict[str, Any], 
         var_name: str, 
-        resampling_method = 'nearest', 
-        target_res: int = None,
-        target_crs: str = None,
-        chunks: dict[tuple] = None
     ):
 
     data_config = config["input"].get(var_name)
@@ -188,10 +168,6 @@ def load_static_data(
     if not data_path.exists():
         raise ValueError(f'File does not exist: {data_path}')
     
-    if not os.path.exists(data_path):
-        raise FileNotFoundError(f"Data not found: {data_path}")
-    
-    # Load with rioxarray
     data = xr.open_dataset(data_path, chunks = -1).squeeze(drop = True)
     data = data[list(data.keys())[0]]
     if '_FillValue' in data.attrs:
@@ -209,41 +185,6 @@ def load_static_data(
     # if not lat_ascending:
     #     data = data.reindex(lat=lat_values[::-1])
     
-    # Check CRS
-    if (target_crs is not None and data.rio.crs.to_string() != target_crs) or (target_res is not None and data.rio.resolution()[0] != target_res):
-        logger.info(f"Reprojecting data to {target_crs} and resolution {target_res} using {resampling_method} for resampling.")
-
-        RESAMPLING_MAPPING = {
-            'nearest': Resampling.nearest,
-            'bilinear': Resampling.bilinear,
-        }
-
-        if resampling_method not in RESAMPLING_MAPPING:
-            raise ValueError(f"Invalid resampling method provided. Use one of {list(RESAMPLING_MAPPING.keys())}")
-        method = RESAMPLING_MAPPING[resampling_method]
-
-        target_bounds = data.rio.bounds()
-        minx, miny, maxx, maxy = target_bounds
-        width = int((maxx - minx) / target_res)
-        height = int((maxy - miny) / target_res)
-        
-        # Resample to target grid
-        data = data.rio.reproject(
-            target_crs,
-            shape=(height, width),
-            bounds=target_bounds,
-            resampling=method
-        ).rename({'x': 'lon', 'y': 'lat'})
-
-    # Apply spatial filtering
-    data = apply_spatial_filter(data, config)
-
-    # Compute if not using dask
-    if not config['processing'].get('use_dask', True):
-        data = data.compute()
-    elif chunks is not None:
-        data = align_chunks(data, chunks)
-
     return data
 
 def save_water_balance(water_balance: xr.DataArray, config: Dict[str, Any], 
