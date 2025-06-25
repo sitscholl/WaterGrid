@@ -20,7 +20,7 @@ class Landuse(BaseProcessor):
 
     def load(self, var_name):
         """Load land-use data from GeoTIFF."""
-        return load_static_data(self.config, var_name = 'landuse')
+        return load_static_data(self.config, var_name = var_name)
 
     def align_chunks(self, target: xr.DataArray | xr.Dataset):
         target_chunks = dict(zip(target.dims, target.chunks))
