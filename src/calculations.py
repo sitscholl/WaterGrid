@@ -93,7 +93,6 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     correction_factors = pr_correction.calculate_correction_factors(
         interstation_regions, precipitation.data, et, validation_tbl, freq=validation_freq
         )
-    ##TODO: Create chunked corr_raster?
     corr_raster = pr_correction.initialize_correction_grids(interstation_regions, correction_factors)
     pr_aggregated = precipitation.data.resample(time = validation_freq).sum()
     pr_corr = pr_correction.apply_correction(pr_aggregated, corr_raster)
