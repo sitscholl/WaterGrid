@@ -16,6 +16,7 @@ from typing import Dict, Any, List
 
 import pandas as pd
 import xarray as xr
+import numpy as np
 
 from src.core import Landuse, Precipitation, Temperature
 from src.validation import Validator, Watersheds
@@ -26,7 +27,7 @@ from src.data_io import (
 from src.calc.evapotranspiration import calculate_thornthwaite_pet, adjust_pet_with_kc
 from src.correction.utils import construct_interstation_watersheds
 from src.correction import PrCorrection
-# from src.cluster import start_dask_cluster
+from src.cluster import start_dask_cluster
 from src.utils import get_season
 from src.config import DATETIME_FREQUENCY_MAPPING
 
@@ -42,8 +43,8 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
         List of paths to saved output files
     """
 
-    # if config['processing'].get('use_dask', False):
-    #     client, cluster = start_dask_cluster()
+    if config['processing'].get('use_dask', False):
+        client, cluster = start_dask_cluster()
 
     resampling_method = config["spatial"].get("resampling_method", "bilinear")
 
@@ -130,7 +131,7 @@ def calculate_p_minus_et(precipitation: xr.DataArray, et: xr.DataArray) -> xr.Da
     if set(precipitation.dims) != set(et.dims):
         raise ValueError("Precipitation and ET must have the same dimensions")
 
-    if not precipitation.time.equals(et.time):
+    if not np.array_equal(precipitation.time, et.time):
         raise ValueError("Got mismatched time dimensions between precipitation and evapotranspiration. Cannot calculate water balance.")
     
     # Check if both arrays have a time dimension
