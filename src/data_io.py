@@ -172,12 +172,12 @@ def load_climate_data(config: Dict[str, Any], data_type: str, chunks: dict[tuple
     return ds[var_name]
 
 def load_static_data(
-    config: Dict[str, Any], 
-    var_name: str, 
-    resampling_method = 'nearest', 
-    target_res: int = None,
-    target_crs: str = None,
-    chunks: dict[tuple] = None
+        config: Dict[str, Any], 
+        var_name: str, 
+        resampling_method = 'nearest', 
+        target_res: int = None,
+        target_crs: str = None,
+        chunks: dict[tuple] = None
     ):
 
     data_config = config["input"].get(var_name)

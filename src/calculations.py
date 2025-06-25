@@ -99,10 +99,7 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     # Precipitation Correction
     logger.info("Correcting Precipitation")
     pr_correction = PrCorrection(
-        config,
-        target_res = target_resolution,
-        target_crs = target_crs,
-        chunks = dict(zip(landuse.data.dims, landuse.data.chunks))
+        config, target = landuse.data
         )
     correction_factors = pr_correction.calculate_correction_factors(
         interstation_regions, precipitation.data, et, validation_tbl, freq=validation_freq
