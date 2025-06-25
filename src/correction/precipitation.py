@@ -7,7 +7,7 @@ from typing import Union, Optional
 
 from .utils import construct_interstation_watersheds
 # from ..validation import Watersheds
-from ..data_io import load_static_data
+from ..core import StationDistance, WindEffect
 from ..resampling import resample_to_target_grid
 from ..config import SECONDS_PER_YEAR, SECONDS_PER_MONTH
 
@@ -21,7 +21,7 @@ class PrCorrection:
     like station distance, wind effect, and validation data.
     """
 
-    def __init__(self, config, **kwargs):
+    def __init__(self, config, target):
         """
         Initialize the PrCorrection class.
 
@@ -45,24 +45,15 @@ class PrCorrection:
         wind_effect_path = config['input'].get('wind_effect', {}).get('path')
 
         try:
-            station_distance = load_static_data(config, 'station_distance', **kwargs)
+            station_distance = StationDistance(config, var_name = 'station_distance', target = target).data
 
             if wind_effect_path is not None:
-                wind_effect = load_static_data(config, 'wind_effect', **kwargs)
-                wind_effect = resample_to_target_grid(wind_effect, station_distance)
-
-                # Ensure consistent coordinate names
-                if 'x' in wind_effect.coords and 'lon' not in wind_effect.coords:
-                    wind_effect = wind_effect.rename({'x': 'lon', 'y': 'lat'})
+                wind_effect = WindEffect(config, var_name = 'wind_effect', target = target).data
 
                 # Calculate distance raster
                 distance_raster = station_distance * np.power(wind_effect, 4)
             else:
                 distance_raster = station_distance
-
-            # Ensure consistent coordinate names
-            if 'x' in distance_raster.coords and 'lon' not in distance_raster.coords:
-                distance_raster = distance_raster.rename({'x': 'lon', 'y': 'lat'})
 
             self.distance_raster = distance_raster
             self.correction_factors = None
