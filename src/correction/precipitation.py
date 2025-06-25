@@ -9,6 +9,7 @@ from .utils import construct_interstation_watersheds
 # from ..validation import Watersheds
 from ..core import StationDistance, WindEffect
 from ..resampling import resample_to_target_grid
+from ..utils import align_chunks
 from ..config import SECONDS_PER_YEAR, SECONDS_PER_MONTH
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,9 @@ class PrCorrection:
                 distance_raster = station_distance * np.power(wind_effect, 4)
             else:
                 distance_raster = station_distance
+
+            if target is not None:
+                distance_raster = align_chunks(distance_raster, dict(zip(target.dims, target.chunks)))
 
             self.distance_raster = distance_raster
             self.correction_factors = None
@@ -185,8 +189,8 @@ class PrCorrection:
             mask = ws != ws.attrs.get('_FillValue', -999)
             corr_amount = correction_factors.xs((ts, w_id))['preci_diff'].item()
 
-            dist_raster = resample_to_target_grid(self.distance_raster, ws)
-            dist_mask = dist_raster.where(mask)
+            # dist_raster = resample_to_target_grid(self.distance_raster, ws)
+            dist_mask = self.distance_raster.where(mask)
 
             dist_weights = dist_mask / dist_mask.sum()
             _corr_raster = dist_weights * corr_amount
