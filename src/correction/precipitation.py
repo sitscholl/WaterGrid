@@ -237,7 +237,7 @@ class PrCorrection:
             Corrected precipitation data
         """   
 
-        if not precipitation.time.equals(correction_grid.time):
+        if not np.array_equal(precipitation.time, correction_grid.time):
             raise ValueError("Got mismatched time dimensions between precipitation and correction grid. Cannot apply correction.")
 
         # Ensure the correction grid matches the precipitation grid
