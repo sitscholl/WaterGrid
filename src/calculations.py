@@ -45,28 +45,16 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     # if config['processing'].get('use_dask', False):
     #     client, cluster = start_dask_cluster()
 
+    resampling_method = config["spatial"].get("resampling_method", "bilinear")
     # Load input data
     # The landuse data determines resolution, crs and chunking
-    landuse = Landuse(config)
-    landuse.load()
-
-    target_resolution = landuse.data.rio.resolution()[0]
-    target_crs = landuse.data.rio.crs.to_epsg()
-    resampling_method = config["spatial"].get("resampling_method", "bilinear")
-
-    # Load temperatue and precipitation data
-    temperature = Temperature(config)
+    landuse = Landuse(config, var_name = 'landuse')
+    temperature = Temperature(config, var_name = 'temperature', target = landuse.data)
+    precipitation = Precipitation(config, var_name = 'precipitation', target = landuse.data)
     # temperature.correct() #TODO: Improve this calculation as dask graph seems very inefficient
     # temperature.to_geotiff()
-
-    precipitation = Precipitation(config)
     # precipitation.to_geotiff()
     
-    # Resample temperature and precipitation to target grid
-    logger.info(f"Resampling data to target resolution of {target_resolution}m")
-    temperature.resample_match(landuse.data, resampling_method)
-    precipitation.resample_match(landuse.data, resampling_method)
-
     # Align chunks in landuse with chunks in climate data
     logger.info('Aligning chunks in landuse with climate data chunks')
     landuse.align_chunks(temperature.data)
