@@ -1,6 +1,7 @@
 import xarray as xr
 import numpy as np
 import pandas as pd
+from flox.xarray import xarray_reduce
 
 import logging
 from pathlib import Path
@@ -88,6 +89,65 @@ class Watersheds:
         return pd.Series(ws_areas, index=pd.Index(self.get_ids(), name = 'Code'))
 
     def aggregate(self, data: xr.DataArray, method: str = 'sum', dim = ['lon', 'lat']) -> pd.DataFrame:
+        """
+        Efficiently aggregate water balance over overlapping watersheds using flox.
+        
+        Parameters:
+        -----------
+        water_balance : xarray.DataArray
+            Water balance data with dimensions (time, lat, lon)
+        watershed_masks : list of xarray.DataArray
+            List of watershed masks where 1=inside watershed, -999=outside
+        watershed_names : list of str, optional
+            Names for each watershed
+        
+        Returns:
+        --------
+        xarray.DataArray
+            Aggregated water balance for each watershed
+        """        
+        logger.debug('Aggregating over watersheds...')
+
+        # Create label arrays for each watershed
+        label_arrays = []
+        
+        for i, id in enumerate(self.get_ids()):
+            # Create labels: watershed_id where mask==1, -1 elsewhere
+            mask = self.get_mask(id)
+            labels = xr.where(mask == 1, i, -1)
+            label_arrays.append(labels)
+        
+        # Stack all label arrays along a new dimension
+        combined_labels = xr.concat(label_arrays, dim='id')
+        combined_labels.name = 'Code'
+
+        # Transform coordinate to integer, otherwise error
+        watershed_id_to_int = dict(zip(combined_labels.id.values, range(len(combined_labels.id.values))))
+        combined_labels = combined_labels.assign_coords(id = [watershed_id_to_int[i] for i in combined_labels.id.values])
+        
+        # Perform the aggregation
+        result = xarray_reduce(
+            data, 
+            combined_labels, 
+            func="sum",
+            expected_groups = combined_labels.id.values
+            # Specify dimensions to reduce over (lat, lon are implicit from labels)
+            # time dimension is preserved
+        )
+
+        # Add watershed names as index
+        int_to_watershed_id = {v: k for k, v in watershed_id_to_int.items()}
+        result = result.assign_coords(Code = [int_to_watershed_id[i] for i in result.Code.values])
+
+        aggregated_values = result.to_dataframe().drop(columns = ['spatial_ref'], errors = 'ignore')
+        aggregated_values = aggregated_values.replace(0, np.nan).dropna()
+
+        if isinstance(data, xr.DataArray):
+            aggregated_values.rename(columns = {data.name, 'modeled_values'}, inplace = True)
+
+        return aggregated_values
+
+    def _aggregate(self, data: xr.DataArray, method: str = 'sum', dim = ['lon', 'lat']) -> pd.DataFrame:
 
         if len(self.data) == 0:
             raise ValueError("No watersheds available for aggregation. Load watersheds first.")
