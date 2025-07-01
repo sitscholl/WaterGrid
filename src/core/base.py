@@ -28,6 +28,9 @@ class BaseProcessor(ABC):
         logger.debug(f"{var_name.capitalize()} data crs: {data.rio.crs}")
         logger.debug(f"{var_name.capitalize()} data resolution: {data.rio.resolution()}")
 
+        if data.chunks is not None:
+            logger.debug(f"{var_name.capitalize()} data chunks: {data.chunks}")
+
     def to_geotiff(self):
 
         if self.var_name is None:
