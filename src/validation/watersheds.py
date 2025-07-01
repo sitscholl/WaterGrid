@@ -139,11 +139,14 @@ class Watersheds:
         int_to_watershed_id = {v: k for k, v in watershed_id_to_int.items()}
         result = result.assign_coords(Code = [int_to_watershed_id[i] for i in result.Code.values])
 
+        if result.name is None:
+            result.name = 'modeled_values'
+
         aggregated_values = result.to_dataframe().drop(columns = ['spatial_ref'], errors = 'ignore')
         aggregated_values = aggregated_values.replace(0, np.nan).dropna()
 
-        if isinstance(data, xr.DataArray):
-            aggregated_values.rename(columns = {data.name, 'modeled_values'}, inplace = True)
+        if isinstance(data, xr.DataArray) and data.name is not None:
+            aggregated_values.rename(columns = {data.name: 'modeled_values'}, inplace = True)
 
         return aggregated_values
 
