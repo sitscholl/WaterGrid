@@ -247,6 +247,7 @@ class PrCorrection:
             self,
             precipitation: xr.DataArray,
             correction_grid: Optional[xr.DataArray] = None,
+            clip_precipitation: bool = False
         ) -> xr.DataArray:
         """
         Apply correction to precipitation data.
@@ -277,7 +278,8 @@ class PrCorrection:
         corrected_precipitation = precipitation + correction_grid
         
         # Ensure no negative precipitation
-        corrected_precipitation = corrected_precipitation.clip(min=0)
+        if clip_precipitation:
+            corrected_precipitation = corrected_precipitation.clip(min=0)
         
         return corrected_precipitation
 
