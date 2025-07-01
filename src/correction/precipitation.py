@@ -152,13 +152,15 @@ class PrCorrection:
             logger.error(f"Error calculating correction factors: {str(e)}")
             raise ValueError(f"Error calculating correction factors: {str(e)}")
 
-    def initialize_correction_grids_vectorized(self, watersheds, correction_factors):
+    def initialize_correction_grids(self, watersheds, correction_factors):
         """
         Vectorized version of initialize_correction_grids for maximum performance.
 
         This method uses xarray's advanced indexing and broadcasting to process
         all watersheds and time steps simultaneously, avoiding Python loops.
 
+        CAREFUL: THIS METHOD CURRENTLY REQUIRES THE WATERSHEDS TO NOT OVERLAP EACH OTHER!
+
         Parameters:
         -----------
         watersheds : Watersheds
@@ -178,181 +180,68 @@ class PrCorrection:
         # Get unique time steps and watershed codes
         unique_times = correction_factors.index.get_level_values('time').unique()
         unique_codes = correction_factors.index.get_level_values('Code').unique()
-        watershed_integers = np.arange(unique_codes)
+        watersheds_to_int = {code: idx for idx, code in enumerate(unique_codes)}
 
-        logger.debug(f"Processing {len(unique_times)} time steps and {len(unique_codes)} watersheds")
+        logger.debug(f"Processing {len(unique_times)} time steps and {len(unique_codes)} watersheds to calculate correction grids")
 
         # Create a 3D array: (time, watersheds, spatial)
         # This allows us to process all combinations at once
 
         # Pre-load all watershed masks and stack them
         logger.debug("Creating watershed mask stack...")
-        watersheds_masks = xr.concat([watersheds.get_mask(i) for i in watersheds.get_ids() if i in unique_codes], dim='watershed')
-        watersheds_masks.assign_coords(watershed = watersheds.get_ids()).argmax()
-        watershed_masks_list = []
-        valid_codes = []
-
-        for w_int, w_id in zip(watershed_integers, unique_codes):
-            try:
-                ws = watersheds.get_mask(w_id)
-                mask = ws != ws.attrs.get('_FillValue', -999)
-                watershed_masks_list.append(mask)
-                valid_codes.append(w_id)
-            except Exception as e:
-                logger.warning(f"Could not load watershed {w_id}: {str(e)}")
-                continue
-
-        if not watershed_masks_list:
-            raise ValueError("No valid watersheds found")
-
-        # Stack all watershed masks along a new dimension
-        watershed_stack = xr.concat(watershed_masks_list, dim='watershed')
-        watershed_stack = watershed_stack.assign_coords(watershed=valid_codes)
+        watersheds_masks = xr.concat([watersheds.get_mask(i) for i in watersheds.get_ids() if i in unique_codes], dim='id')
+        watersheds_masks = watersheds_masks.assign_coords(id = [watersheds_to_int[i] for i in watersheds_masks['id'].values])
+        watersheds_masks = watersheds_masks.idxmax('id')
 
         # Create correction factors array aligned with time and watershed dimensions
         logger.debug("Creating correction factors array...")
-        correction_array = xr.DataArray(
-            np.full((len(unique_times), len(valid_codes)), np.nan),
-            dims=['time', 'watershed'],
-            coords={'time': unique_times, 'watershed': valid_codes}
-        )
+        correction_array = watersheds_masks.expand_dims(time = unique_times)
 
-        # Fill correction factors array
-        for (ts, w_id), row in correction_factors.iterrows():
-            if w_id in valid_codes:
-                correction_array.loc[dict(time=ts, watershed=w_id)] = row['preci_diff']
+        # Map the precipitation correction amount to the watershed masks
+        mapping_df = correction_factors.reset_index().pivot(index='Code', columns='time', values='preci_diff')
+        mapping_df.index = mapping_df.index.map(watersheds_to_int)
+
+        def map_single_time(block, mapping):
+            # block: numpy or dask array for a single time slice
+            # mapping: dict {int: float} for this time
+
+            # Create a lookup array
+            max_id = int(np.max(list(mapping.keys())))
+            lookup = np.full(max_id + 1, np.nan, dtype=float)
+            for k, v in mapping.items():
+                lookup[k] = v
+            # Map values using lookup
+            return lookup[block]
+
+        def map_func(block, time_idx):
+            # block: numpy array for this time
+            # time_idx: the time value
+            mapping = mapping_df[time_idx].squeeze().dropna().to_dict()
+            return map_single_time(block, mapping)
+
+        correction_per_watershed = correction_array.groupby('time').map(lambda x: map_func(x, x['time'].values))
 
         # Calculate distance weights for all watersheds at once
         logger.debug("Calculating distance weights...")
-        distance_masked = self.distance_raster.where(watershed_stack)
-        distance_sums = distance_masked.sum(dim=['lat', 'lon'])
+        distance_sums = self.distance_raster.groupby(watersheds_masks.compute()).sum().to_dataframe()
+        watershed_distance = xr.full_like(watersheds_masks, fill_value = np.nan)
+        for watershed_id, dist in zip(distance_sums.index, distance_sums['band_data']):
+            watershed_distance = xr.where(watersheds_masks == watershed_id, dist, watershed_distance)
 
         # Avoid division by zero
-        distance_sums = distance_sums.where(distance_sums > 0, 1)
-        distance_weights = distance_masked / distance_sums
+        watershed_distance = watershed_distance.where(watershed_distance > 0, 1)
+        distance_weights = self.distance_raster / watershed_distance
 
         # Apply corrections: broadcast correction factors across spatial dimensions
         logger.debug("Applying corrections...")
-        corrections = distance_weights * correction_array
-
-        # Sum across watersheds to get final correction grid
-        # Use nansum to handle overlapping watersheds properly
-        final_corrections = corrections.sum(dim='watershed', skipna=True)
+        corrections = distance_weights * correction_per_watershed
 
         # Set name and ensure proper coordinate order
-        final_corrections.name = 'Correction Grid'
-        final_corrections = final_corrections.rio.write_crs(self.distance_raster.rio.crs)
+        corrections.name = 'Correction Grid'
+        corrections = corrections.rio.write_crs(self.distance_raster.rio.crs)
 
         logger.debug("Vectorized correction grid initialization completed")
-        return final_corrections.transpose('time', 'lat', 'lon')
-
-    def initialize_correction_grids(self, watersheds, correction_factors):
-        """
-        Initialize correction grids based on watershed correction factors and distance raster.
-
-        This method automatically chooses between the standard and vectorized implementation
-        based on the data size for optimal performance.
-
-        Parameters:
-        -----------
-        watersheds : Watersheds
-            Watersheds object containing watershed masks
-        correction_factors : pd.DataFrame
-            DataFrame containing correction factors for each watershed.
-
-        Returns:
-        --------
-        xr.DataArray
-            Correction raster
-        """
-
-        # Use vectorized version for better performance
-        # Fall back to iterative version if vectorized fails (e.g., memory issues)
-        try:
-            return self.initialize_correction_grids_vectorized(watersheds, correction_factors)
-        except Exception as e:
-            logger.warning(f"Vectorized method failed ({str(e)}), falling back to iterative method")
-            return self.initialize_correction_grids_iterative(watersheds, correction_factors)
-
-    def initialize_correction_grids_iterative(self, watersheds, correction_factors):
-        """
-        Iterative version of initialize_correction_grids (original implementation with optimizations).
-
-        This is the fallback method when the vectorized version fails due to memory constraints.
-        """
-
-        if correction_factors.index.names != ['time', 'Code']:
-            raise ValueError(f"Index names of correction_factors must be ['time', 'Code']. Got {correction_factors.index.names}")
-
-        # Get unique time steps and watershed codes
-        unique_times = correction_factors.index.get_level_values('time').unique()
-        unique_codes = correction_factors.index.get_level_values('Code').unique()
-
-        # Pre-load all watershed masks to avoid repeated I/O
-        logger.debug("Pre-loading watershed masks...")
-        watershed_masks = {}
-        for w_id in unique_codes:
-            try:
-                ws = watersheds.get_mask(w_id)
-                mask = ws != ws.attrs.get('_FillValue', -999)
-                watershed_masks[w_id] = mask
-            except Exception as e:
-                logger.warning(f"Could not load watershed {w_id}: {str(e)}")
-                continue
-
-        # Initialize the output array with proper dimensions
-        corr_raster = xr.zeros_like(self.distance_raster).expand_dims(time=unique_times)
-        corr_raster = corr_raster.rio.write_crs(self.distance_raster.rio.crs)
-        corr_raster.name = 'Correction Grid'
-
-        # Group correction factors by time for efficient processing
-        correction_by_time = correction_factors.groupby(level='time')
-
-        logger.debug("Processing correction grids by time step...")
-        for ts, time_group in correction_by_time:
-            logger.debug(f"Processing time step: {ts}")
-
-            # Initialize accumulator for this time step
-            time_correction = xr.zeros_like(self.distance_raster)
-
-            # Process all watersheds for this time step
-            for w_id in time_group.index.get_level_values('Code'):
-                if w_id not in watershed_masks:
-                    continue
-
-                try:
-                    corr_amount = time_group.xs((ts, w_id))['preci_diff'].item()
-                    mask = watershed_masks[w_id]
-
-                    # Calculate distance weights for this watershed
-                    dist_mask = self.distance_raster.where(mask)
-                    dist_sum = dist_mask.sum()
-
-                    # Skip if no valid distances (avoid division by zero)
-                    if dist_sum == 0:
-                        logger.warning(f"No valid distances for watershed {w_id} at time {ts}")
-                        continue
-
-                    # Calculate weighted correction for this watershed
-                    dist_weights = dist_mask / dist_sum
-                    watershed_correction = dist_weights * corr_amount
-
-                    # Add to time step accumulator (only where mask is valid)
-                    time_correction = xr.where(
-                        mask,
-                        watershed_correction.fillna(0),
-                        time_correction
-                    )
-
-                except Exception as e:
-                    logger.warning(f"Error processing watershed {w_id} at time {ts}: {str(e)}")
-                    continue
-
-            # Assign the complete time step to the output array
-            corr_raster.loc[dict(time=ts)] = time_correction
-
-        logger.debug("Iterative correction grid initialization completed")
-        return corr_raster.transpose('time', 'lat', 'lon')
+        return corrections.transpose('time', 'lat', 'lon')
         
     def apply_correction(
             self,
@@ -381,8 +270,8 @@ class PrCorrection:
             raise ValueError("Got mismatched time dimensions between precipitation and correction grid. Cannot apply correction.")
 
         # Ensure the correction grid matches the precipitation grid
-        correction_grid = correction_grid.rename({'lon': 'x', 'lat': 'y'}).rio.reproject_match(precipitation.rename({'lon': 'x', 'lat': 'y'}))
-        correction_grid = correction_grid.rename({'x': 'lon', 'y': 'lat'})
+        #correction_grid = correction_grid.rename({'lon': 'x', 'lat': 'y'}).rio.reproject_match(precipitation.rename({'lon': 'x', 'lat': 'y'}))
+        #correction_grid = correction_grid.rename({'x': 'lon', 'y': 'lat'})
         
         # Apply the correction
         corrected_precipitation = precipitation + correction_grid
