@@ -58,7 +58,7 @@ class Validator:
             self.data = None
         else:
             self.data = pd.concat(tables)
-            logger.info(f"Loaded {len(tables)} tables into the validator.")
+            logger.debug(f"Loaded {len(tables)} tables into the validator.")
                         
     def _process_station_file(self, file_path, stations_config):
         """
@@ -78,8 +78,6 @@ class Validator:
             logger.error(f"Error reading station metadata from {file_path}: {str(e)}")
             raise
             
-        logger.debug(f"Loading Station name: {info.get('Station name', 'Unknown')}")
-        
         # Read time series data
         try:
             data = pd.read_csv(
@@ -109,14 +107,16 @@ class Validator:
         
         # Resample to daily frequency
         data_fill = data.resample('D').first()
-        logger.debug(f"\tnans before: {data_fill.isna().sum().item()}")
+        nans_before = data_fill.isna().sum().item()
         
         # Get maximum gap for interpolation from config
         maxgap = stations_config.get('maxgap', 3)
         
         # Process missing values
         data_fill = self._handle_missing_values(data_fill, maxgap)
-        logger.debug(f"\tnans after: {data_fill.isna().sum().item()}")
+        nans_after = data_fill.isna().sum().item()
+
+        logger.debug(f"Loaded Station {info.get('Station name', 'Unknown')} with {nans_before - nans_after} NA values filled.")
         
         # Add station code and rename columns
         data_fill['Code'] = info.get('Station number', 'Unknown')
