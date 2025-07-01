@@ -201,13 +201,12 @@ class PrCorrection:
         mapping_df = correction_factors.reset_index().pivot(index='Code', columns='time', values='preci_diff')
         mapping_df.index = mapping_df.index.map(watersheds_to_int)
 
-        def map_single_time(block, mapping):
+        def map_single_time(block, mapping, max_id):
             # block: numpy or dask array for a single time slice
             # mapping: dict {int: float} for this time
 
             # Create a lookup array
-            max_id = int(np.max(list(mapping.keys())))
-            lookup = np.full(max_id + 1, np.nan, dtype=float)
+            lookup = np.full(max_id, np.nan, dtype=float)
             for k, v in mapping.items():
                 lookup[k] = v
             # Map values using lookup
@@ -217,7 +216,8 @@ class PrCorrection:
             # block: numpy array for this time
             # time_idx: the time value
             mapping = mapping_df[time_idx].squeeze().dropna().to_dict()
-            return map_single_time(block, mapping)
+            return map_single_time(block, mapping, max_id = len(watersheds_to_int))
+            logger.debug(f"Remapped correction factors for timestep {time_idx:%Y-%m-%d %H:%M:%S}")
 
         correction_per_watershed = correction_array.groupby('time').map(lambda x: map_func(x, x['time'].values))
 
