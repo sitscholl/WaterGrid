@@ -1,4 +1,5 @@
 import dask
+import dask.config
 from dask.distributed import Client, LocalCluster
 
 import logging
@@ -7,6 +8,8 @@ import logging.config
 logger = logging.getLogger(__name__)
 
 def start_dask_cluster():
+
+    # dask.config.set({"array.chunk-size": "64 MiB"})
 
     cluster = LocalCluster()
     client = Client(cluster)

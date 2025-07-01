@@ -104,9 +104,9 @@ def calculate_water_balance(config: Dict[str, Any]) -> List[str]:
     water_balance_corrected = calculate_p_minus_et(pr_corr, et_aggregated)
 
     # Validate results
-    logger.info('Validating results after correction')
-    validation_tbl_after_correction = validator.validate(watersheds, water_balance_corrected, freq=validation_freq)
-    validator.plot_timeseries(validation_tbl_after_correction)
+    # logger.info('Validating results after correction')
+    # validation_tbl_after_correction = validator.validate(watersheds, water_balance_corrected, freq=validation_freq)
+    # validator.plot_timeseries(validation_tbl_after_correction)
     
     # Save results
     output_frequency = config["temporal"].get("output_frequency", "monthly")
