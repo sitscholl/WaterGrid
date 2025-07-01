@@ -45,6 +45,7 @@ def construct_interstation_watersheds(watersheds):
         else:
             interstation_region = watersheds.get_mask(ws_id)
 
+        interstation_region = interstation_region.assign_coords(id = ws_id)
         interstation_regions[ws_id] = interstation_region
     return interstation_regions
 
