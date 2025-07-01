@@ -132,12 +132,13 @@ def load_climate_data(config: Dict[str, Any], var_name: str) -> xr.Dataset:
     
     data_config = config["input"][var_name]
     data_path = data_config["path"]
+    chunks = config['processing'].get('chunk_size', 'auto')
     
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"{var_name.capitalize()} data not found: {data_path}")
     
     # Load with dask for chunked processing
-    ds = xr.open_zarr(data_path, chunks='auto', decode_coords='all')
+    ds = xr.open_zarr(data_path, chunks=chunks, decode_coords='all')
     
     # Check for the variable
     var_name = data_config["variable"]
