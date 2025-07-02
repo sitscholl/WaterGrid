@@ -88,7 +88,7 @@ class Watersheds:
 
         return pd.Series(ws_areas, index=pd.Index(self.get_ids(), name = 'Code'))
 
-    def aggregate(self, data: xr.DataArray, method: str = 'sum', dim = ['lon', 'lat']) -> pd.DataFrame:
+    def aggregate(self, data: xr.DataArray) -> pd.DataFrame:
         """
         Efficiently aggregate water balance over overlapping watersheds using flox.
         
@@ -143,7 +143,7 @@ class Watersheds:
             result.name = 'modeled_values'
 
         aggregated_values = result.to_dataframe().drop(columns = ['spatial_ref'], errors = 'ignore')
-        aggregated_values = aggregated_values.replace(0, np.nan).dropna()
+        # aggregated_values = aggregated_values.replace(0, np.nan).dropna()
 
         if isinstance(data, xr.DataArray) and data.name is not None:
             aggregated_values.rename(columns = {data.name: 'modeled_values'}, inplace = True)
