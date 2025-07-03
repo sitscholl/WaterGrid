@@ -56,7 +56,7 @@ class PrCorrection:
             else:
                 distance_raster = station_distance
 
-            if target is not None:
+            if target is not None and target.chunks is not None:
                 distance_raster = align_chunks(distance_raster, dict(zip(target.dims, target.chunks)))
 
             self.distance_raster = distance_raster
@@ -123,15 +123,15 @@ class PrCorrection:
 
             # Calculate modeled precipitation for interstation regions
             modeled_interstation_precipitation = watersheds.aggregate(precipitation)['modeled_values']
-            modeled_interstation_precipitation = modeled_interstation_precipitation.groupby(grouper).sum() #mm/year over entire watershed
+            modeled_interstation_precipitation = modeled_interstation_precipitation.groupby(grouper).sum(min_count=1) #mm/year over entire watershed
 
             # Calculate modeled evapotranspiration for interstation regions
             modeled_interstation_evaporation = watersheds.aggregate(et)['modeled_values']
-            modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(grouper).sum() #mm/year over entire watershed
+            modeled_interstation_evaporation = modeled_interstation_evaporation.groupby(grouper).sum(min_count=1) #mm/year over entire watershed
 
             #measured_interstation_discharge = get_measured_discharge_for_interstation_regions(validation_tbl)['measured_values'] #in m³/s
             measured_interstation_discharge = (validation_tbl['measured_values'] * (seconds * 1000)) / target_res**2 # Convert from m³/s to mm/year or mm/month over watershed.
-            measured_interstation_discharge = measured_interstation_discharge.groupby(grouper).sum()
+            measured_interstation_discharge = measured_interstation_discharge.groupby(grouper).sum(min_count=1)
 
             # Calculate expected precipitation based on water balance equation
             expected_interstation_precipitation = (

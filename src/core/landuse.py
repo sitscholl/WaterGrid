@@ -23,8 +23,9 @@ class Landuse(BaseProcessor):
         return load_static_data(self.config, var_name = var_name)
 
     def align_chunks(self, target: xr.DataArray | xr.Dataset):
-        target_chunks = dict(zip(target.dims, target.chunks))
-        self.data = align_chunks(self.data, target_chunks)
+        if target.chunks is not None:
+            target_chunks = dict(zip(target.dims, target.chunks))
+            self.data = align_chunks(self.data, target_chunks)
 
     def _load_kc_coefficients(self):
         """Load Kc coefficients from Excel file."""

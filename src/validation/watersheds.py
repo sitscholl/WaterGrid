@@ -68,10 +68,11 @@ class Watersheds:
         return watersheds
 
     def align_chunks(self, target: xr.DataArray | xr.Dataset):
-        target_chunks = dict(zip(target.dims, target.chunks))
+        if target.chunks is not None:
+            target_chunks = dict(zip(target.dims, target.chunks))
 
-        for i, data in self.data.items():
-            self.data[i] = align_chunks(data, target_chunks)
+            for i, data in self.data.items():
+                self.data[i] = align_chunks(data, target_chunks)
 
     def get_ids(self) -> list | None:
         return list(self.data.keys())

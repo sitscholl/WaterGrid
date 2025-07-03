@@ -21,6 +21,9 @@ class BaseProcessor(ABC):
             data = resample_to_target_grid(data, target, **kwargs)
         data = apply_spatial_filter(data, config)
 
+        if not config.get('processing', {}).get('use_dask', False):
+            data = data.compute()
+
         self.data = data
 
         logger.info(f"Loaded {var_name} data")
